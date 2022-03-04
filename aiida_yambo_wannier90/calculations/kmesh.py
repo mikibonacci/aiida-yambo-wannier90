@@ -121,33 +121,37 @@ def find_commensurate_integers(  # pylint: disable=too-many-locals,import-outsid
 
     # if dense is larger than coarse
     k = dense / coarse
-    klow = math.floor(k)
+    # klow = math.floor(k)
+    # min of klow is 1 instead of the ratio
+    klow = 1
     khigh = math.ceil(k)
 
     if debug_plot:
-        xmax = 2 * coarse
-        ax.plot([0, xmax], [0, xmax * klow], color="orange", label="$k_{low}$")
-        ax.plot([0, xmax], [0, xmax * khigh], color="orange", label="$k_{high}$")
+        ax.axline([0, 0], [1, klow], color="orange", label=r"$k_{low}$")
+        ax.axline([0, 0], [1, khigh], color="orange", label=r"$k_{high}$")
 
     valid_solutions = []
 
-    # always a good solution
+    # two always good solutions
     new_dense = coarse * khigh
     solution = (new_dense, coarse)
+    valid_solutions.append(solution)
+    #
+    solution = (dense, dense)
     valid_solutions.append(solution)
 
     # find all possible solutions
     for new_dense in range(dense, coarse * khigh):
-        div, mod = divmod(new_dense, klow)
-        if mod == 0:
-            new_coarse = div
-            solution = (new_dense, new_coarse)
-            valid_solutions.append(solution)
+        for new_coarse in range(coarse, new_dense // klow + 1):
+            mod = new_dense % new_coarse
+            if mod == 0:
+                solution = (new_dense, new_coarse)
+                valid_solutions.append(solution)
 
     # find the minimal increment
     # we have two scaling number representing the cost of increasing the two meshes,
     # should be the scaling of yambo and wannier workflows, respectively.
-    scaling_dense = 2.0
+    scaling_dense = 1.0
     scaling_coarse = 1.0
 
     # not sure if this is good, but use power law scaling at the moment.
