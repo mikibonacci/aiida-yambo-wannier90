@@ -162,6 +162,9 @@ def test_find_commensurate_integers():
     result = find_commensurate_integers(3, 5)
     assert result == (5, 5)
 
+    result = find_commensurate_integers(5, 5, include_identical=False)
+    assert result == (10, 5)
+
 
 def test_find_commensurate_meshes():
     """Test find_commensurate_integers."""

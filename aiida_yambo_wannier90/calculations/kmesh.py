@@ -56,9 +56,11 @@ def kmapper(
     return orm.List(list=qpkrange)
 
 
-def find_commensurate_integers(  # pylint: disable=too-many-locals,import-outside-toplevel
+def find_commensurate_integers(  # pylint: disable=too-many-locals,import-outside-toplevel,too-many-branches,too-many-statements
     dense: int,
     coarse: int,
+    *,
+    include_identical: bool = True,
     debug_plot: bool = False,
 ) -> ty.Tuple[int, int]:
     """Increase the two integers to make the ``corase`` a divisor of ``dense``.
@@ -66,19 +68,19 @@ def find_commensurate_integers(  # pylint: disable=too-many-locals,import-outsid
     Return the minimum possible solution, i.e. the smallest increment of the two
     integers to be commensurate.
 
-
-
     :param dense: the larger integer
     :type dense: int
     :param coarse: the smaller integer, however upon input it can be larger than
     the input ``dense`` integer, but upon output ``coarse`` is always smaller or
     equal than ``dense``.
     :type coarse: int
+    :param debug_plot: dense = coarse is valid solution, otherwise dense always > coarse
+    :type debug_plot: bool
     :param debug_plot: use matplotlib to plot all the solutions
     ```
-    find_commensurate_integers(5, 2, True)
-    find_commensurate_integers(11, 5, True)
-    find_commensurate_integers(3, 5, True)
+    find_commensurate_integers(5, 2, debug_plot=True)
+    find_commensurate_integers(11, 5, debug_plot=True)
+    find_commensurate_integers(3, 5, debug_plot=True)
     ```
     :type debug_plot: bool
     :return: the new ``(dense, corase)`` integers that are commensurate.
@@ -108,7 +110,15 @@ def find_commensurate_integers(  # pylint: disable=too-many-locals,import-outsid
 
     # if dense if smaller or equal to coarse
     if dense <= coarse:
-        solution = (coarse, coarse)
+        if include_identical:
+            solution = (coarse, coarse)
+        else:
+            return find_commensurate_integers(
+                coarse + 1,
+                coarse,
+                include_identical=False,
+                debug_plot=debug_plot,
+            )
 
         if debug_plot:
             ax.scatter(*reversed(solution), color="red", label="solution")
@@ -137,19 +147,24 @@ def find_commensurate_integers(  # pylint: disable=too-many-locals,import-outsid
     solution = (new_dense, coarse)
     valid_solutions.append(solution)
     #
-    solution = (dense, dense)
-    valid_solutions.append(solution)
+    if include_identical:
+        solution = (dense, dense)
+        valid_solutions.append(solution)
 
     # find all possible solutions
     for new_dense in range(dense, coarse * khigh):
-        for new_coarse in range(coarse, new_dense // klow + 1):
+        if include_identical:
+            lim = new_dense // klow + 1
+        else:
+            lim = new_dense // klow
+        for new_coarse in range(coarse, lim):
             mod = new_dense % new_coarse
             if mod == 0:
                 solution = (new_dense, new_coarse)
                 valid_solutions.append(solution)
 
     # find the minimal increment
-    # we have two scaling number representing the cost of increasing the two meshes,
+    # we have two scaling numbers representing the cost of increasing the two meshes,
     # should be the scaling of yambo and wannier workflows, respectively.
     scaling_dense = 1.0
     scaling_coarse = 1.0
