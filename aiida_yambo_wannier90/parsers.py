@@ -3,55 +3,31 @@ Parsers provided by aiida_yambo_wannier90.
 
 Register parsers via the "aiida.parsers" entry point in setup.json.
 """
-from aiida.common import exceptions
-from aiida.engine import ExitCode
-from aiida.orm import SinglefileData
-from aiida.parsers.parser import Parser
-from aiida.plugins import CalculationFactory
-
-DiffCalculation = CalculationFactory("yambo_wannier90")
+import typing as ty
 
 
-class DiffParser(Parser):
-    """
-    Parser class for parsing output of calculation.
-    """
+def parse_pw_output_kpoints(filecontent: ty.List[str]) -> ty.List:
+    lines = filecontent.split("\n")
 
-    def __init__(self, node):
-        """
-        Initialize Parser instance
+    read_kpts = False
+    k_fine_list = []
+    for line in lines:
+        if "number of k points=" in line:
+            numk_line = line.strip("\n").split()
+            num_kpoints = int(numk_line[4])
+            # print(
+            #     'Number of kpoints provided to Yambo through a NSCF calculation',
+            #     num_kpoints)
+        if read_kpts == True:
+            kline = line.strip("\n").split()
+            if "wk" in kline:
+                a = kline[4:6]
+                b = kline[6].split(")")[0]
+                k_vec = [float(a[0]), float(a[1]), float(b)]
+                k_fine_list.append(k_vec)
+            else:
+                read_kpts = False
+        if "cryst. coord." in line and "site" not in line:
+            read_kpts = True
 
-        Checks that the ProcessNode being passed was produced by a DiffCalculation.
-
-        :param node: ProcessNode of calculation
-        :param type node: :class:`aiida.orm.ProcessNode`
-        """
-        super().__init__(node)
-        if not issubclass(node.process_class, DiffCalculation):
-            raise exceptions.ParsingError("Can only parse DiffCalculation")
-
-    def parse(self, **kwargs):
-        """
-        Parse outputs, store results in database.
-
-        :returns: an exit code, if parsing fails (or nothing if parsing succeeds)
-        """
-        output_filename = self.node.get_option("output_filename")
-
-        # Check that folder content is as expected
-        files_retrieved = self.retrieved.list_object_names()
-        files_expected = [output_filename]
-        # Note: set(A) <= set(B) checks whether A is a subset of B
-        if not set(files_expected) <= set(files_retrieved):
-            self.logger.error(
-                f"Found files '{files_retrieved}', expected to find '{files_expected}'"
-            )
-            return self.exit_codes.ERROR_MISSING_OUTPUT_FILES
-
-        # add output file
-        self.logger.info(f"Parsing '{output_filename}'")
-        with self.retrieved.open(output_filename, "rb") as handle:
-            output_node = SinglefileData(file=handle)
-        self.out("yambo_wannier90", output_node)
-
-        return ExitCode(0)
+    return k_fine_list

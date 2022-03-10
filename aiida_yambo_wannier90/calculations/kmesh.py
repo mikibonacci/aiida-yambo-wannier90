@@ -9,6 +9,39 @@ from aiida.engine import calcfunction
 
 
 @calcfunction
+def get_output_explicit_kpoints(retrieved: orm.FolderData) -> orm.KpointsData:
+    """Parse the kpoints in the stdout of a ``PwCalculation``.
+
+    :param retrieved: the retrieved folder of a ``PwCalculation``.
+    :type retrieved: orm.FolderData
+    :return: an explicit list of kpoints in the stdout, in crystal coordinates.
+    :rtype: orm.KpointsData
+    """
+    from aiida_quantumespresso.calculations.pw import PwCalculation
+
+    from aiida_yambo_wannier90.parsers import parse_pw_output_kpoints
+
+    if not isinstance(retrieved, orm.FolderData):
+        raise ValueError(f"{retrieved} is not a FolderData")
+
+    creator = retrieved.creator
+    if not isinstance(creator, orm.CalcJobNode):
+        raise ValueError(f"{creator} is not a CalcJobNode")
+
+    if creator.process_class != PwCalculation:
+        raise ValueError(f"{creator} is not a PwCalculation")
+
+    output_filename = creator.attributes["output_filename"]
+    output = retrieved.get_object_content(output_filename)
+    kpoint_list = parse_pw_output_kpoints(output)
+
+    kpoints = orm.KpointsData()
+    kpoints.set_kpoints(kpoint_list)
+
+    return kpoints
+
+
+@calcfunction
 def kmapper(
     dense_mesh: orm.KpointsData,
     coarse_mesh: orm.KpointsData,
@@ -202,16 +235,17 @@ def find_commensurate_meshes(
     The input dense mesh can be smaller than the coarse mesh, but the returned dense mesh is always
     larger or equal to the coarse mesh.
 
-    :param dense_mesh: the dense mesh, the ``orm.KpointsData`` shoud be a mesh rather than explicit kpoints.
+    :param dense_mesh: the dense mesh, the ``orm.KpointsData`` can be an explicit list or a mesh.
     :type dense_mesh: orm.KpointsData
-    :param coarse_mesh: the coarse mesh, the ``orm.KpointsData`` shoud be a mesh rather than explicit kpoints.
+    :param coarse_mesh: the coarse mesh, the ``orm.KpointsData`` can be an explicit list or a mesh.
     :type coarse_mesh: orm.KpointsData
     :return: the commensurate dense and coarse mesh.
     :rtype: ty.Tuple[orm.KpointsData, orm.KpointsData]
     """
+    from aiida_wannier90_workflows.utils.kpoints import get_mesh_from_kpoints
 
-    dense, _ = dense_mesh.get_kpoints_mesh()
-    coarse, _ = coarse_mesh.get_kpoints_mesh()
+    dense = get_mesh_from_kpoints(dense_mesh)
+    coarse = get_mesh_from_kpoints(coarse_mesh)
 
     new_dense = [0, 0, 0]
     new_coarse = [0, 0, 0]
