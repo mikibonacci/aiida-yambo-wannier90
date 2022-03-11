@@ -689,7 +689,7 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
             inputs.parent_folder = self.ctx.wkchain_yambo_conv.outputs.remote_folder #working if merge is not needed
 
         if "nnkp_file" not in inputs:
-            inputs.nnkp_file = self.ctx.wkchain_wannier90.outputs.wannier90_pp.nnkp
+            inputs.nnkp_file = self.ctx.wkchain_wannier90.outputs.wannier90_pp.nnkp_file
 
         return inputs
 
@@ -729,7 +729,7 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
         inputs.metadata.call_link_label = "gw2wannier90"
 
         if self.should_run_wannier():
-            inputs.nnkp = self.ctx.wkchain_wannier90.outputs.wannier90_pp.nnkp
+            inputs.nnkp = self.ctx.wkchain_wannier90.outputs.wannier90_pp.nnkp_file
 
         if self.should_run_ypp():
             inputs.unsorted_eig = self.ctx.wkchain_ypp.outputs.unsorted_eig_file
