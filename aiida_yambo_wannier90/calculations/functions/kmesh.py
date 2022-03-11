@@ -19,7 +19,7 @@ def get_output_explicit_kpoints(retrieved: orm.FolderData) -> orm.KpointsData:
     """
     from aiida_quantumespresso.calculations.pw import PwCalculation
 
-    from aiida_yambo_wannier90.parsers import parse_pw_output_kpoints
+    from aiida_yambo_wannier90.parsers.raw import parse_pw_output_kpoints
 
     if not isinstance(retrieved, orm.FolderData):
         raise ValueError(f"{retrieved} is not a FolderData")

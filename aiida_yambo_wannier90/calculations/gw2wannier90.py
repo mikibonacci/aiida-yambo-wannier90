@@ -5,13 +5,17 @@ from aiida import orm
 from aiida.common import datastructures
 from aiida.engine import CalcJob
 
+from aiida_wannier90.calculations import Wannier90Calculation
+
+from aiida_wannier90_workflows.utils.str import removesuffix
+
 
 class Gw2wannier90Calculation(CalcJob):
     """
     AiiDA calculation plugin wrapping the ``gw2wannier90.py``.
     """
 
-    _DEFAULT_INPUT_SEEDNAME = "aiida.unsorted"
+    _DEFAULT_INPUT_FOLDER = "unsorted"
     _DEFAULT_OUTPUT_SEEDNAME = "aiida"
     _DEFAULT_OUTPUT_FILE = "gw2wannier90.out"
 
@@ -38,7 +42,7 @@ class Gw2wannier90Calculation(CalcJob):
         spec.input(
             "parent_folder",
             valid_type=orm.RemoteData,
-            help="Remote folder containing win/amn/mmn/eig/... files.",
+            help="Remote folder containing amn/mmn/eig/... files.",
         )
         spec.input(
             "unsorted_eig",
@@ -55,11 +59,21 @@ class Gw2wannier90Calculation(CalcJob):
             valid_type=orm.Dict,
             help="Output parameters.",
         )
+        spec.output(
+            "sort_index",
+            valid_type=orm.ArrayData,
+            help="Sort index.",
+        )
 
         spec.exit_code(
             300,
             "ERROR_MISSING_OUTPUT_FILES",
             message="Calculation did not produce all expected output files.",
+        )
+        spec.exit_code(
+            301,
+            "ERROR_NO_RETRIEVED_TEMPORARY_FOLDER",
+            message="The retrieved temporary folder could not be accessed.",
         )
 
     def prepare_for_submission(self, folder):
@@ -72,7 +86,18 @@ class Gw2wannier90Calculation(CalcJob):
         """
         codeinfo = datastructures.CodeInfo()
 
-        cmdline_params = [self._DEFAULT_INPUT_SEEDNAME]
+        # The input amn/mmn/eig are in `unsorted/` folder,
+        # The output amn/mmn/eig are in the current workdir, so the current
+        # RemoteData can be directly used by `Wannier90Calculation`.
+        w90_default_seedname = removesuffix(
+            Wannier90Calculation._DEFAULT_INPUT_FILE,
+            Wannier90Calculation._REQUIRED_INPUT_SUFFIX,
+        )  # actually = aiida
+        cmdline_params = [
+            f"--output_seedname",
+            self._DEFAULT_OUTPUT_SEEDNAME,
+            f"{self._DEFAULT_INPUT_FOLDER}/{w90_default_seedname}",
+        ]
         codeinfo.cmdline_params = cmdline_params
         codeinfo.code_uuid = self.inputs.code.uuid
         codeinfo.stdout_name = self.metadata.options.output_filename
@@ -82,22 +107,58 @@ class Gw2wannier90Calculation(CalcJob):
         # Prepare a `CalcInfo` to be returned to the engine
         calcinfo = datastructures.CalcInfo()
         calcinfo.codes_info = [codeinfo]
-        # calcinfo.local_copy_list = [
-        #     (
-        #         self.inputs.file1.uuid,
-        #         self.inputs.file1.filename,
-        #         self.inputs.file1.filename,
-        #     ),
-        # ]
 
-        # symlink the input bxsf
-        remote_path = self.inputs.parent_folder.get_remote_path()
-        calcinfo.remote_symlink_list = [
+        local_copy_list = []
+        # nnkp file
+        nnkp = self.inputs.nnkp
+        local_copy_list.append(
             (
-                self.inputs.bxsf.computer.uuid,
-                remote_path,
-                self._DEFAULT_INPUT_BXSF,
-            ),
+                nnkp.uuid,
+                nnkp.filename,
+                f"{self._DEFAULT_INPUT_FOLDER}/{w90_default_seedname}.nnkp",
+            )
+        )
+        # unsorted.eig file
+        unsorted_eig = self.inputs.unsorted_eig
+        local_copy_list.append(
+            (
+                unsorted_eig.uuid,
+                unsorted_eig.filename,
+                f"{self._DEFAULT_INPUT_FOLDER}/{w90_default_seedname}.gw.unsorted.eig",
+            )
+        )
+        calcinfo.local_copy_list = local_copy_list
+
+        # Files to be sorted by gw2wannier90
+        extensions = [
+            "eig",
+            "amn",
+            "mmn",
+            "spn",
+        ]
+
+        # symlink the input seedname.amn/mmn/... from a remote_folder
+        # of Wannier90Calculation to aiida.unsorted.amn/mmn/...
+        remote_path = pathlib.Path(self.inputs.parent_folder.get_remote_path())
+        remote_symlink_list = []
+        existed_files = self.inputs.parent_folder.listdir()
+        for ext in extensions:
+            filename = f"{w90_default_seedname}.{ext}"
+
+            if filename not in existed_files:
+                continue
+
+            remote_symlink_list.append(
+                (
+                    self.inputs.parent_folder.computer.uuid,
+                    str(remote_path / filename),
+                    f"{self._DEFAULT_INPUT_FOLDER}/{filename}",
+                )
+            )
+        calcinfo.remote_symlink_list = remote_symlink_list
+
+        calcinfo.retrieve_temporary_list = [
+            f"{self._DEFAULT_OUTPUT_SEEDNAME}.gw2wannier90.raw"
         ]
 
         calcinfo.retrieve_list = [

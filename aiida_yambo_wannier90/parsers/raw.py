@@ -18,7 +18,7 @@ def parse_pw_output_kpoints(filecontent: ty.List[str]) -> ty.List:
             # print(
             #     'Number of kpoints provided to Yambo through a NSCF calculation',
             #     num_kpoints)
-        if read_kpts == True:
+        if read_kpts:
             kline = line.strip("\n").split()
             if "wk" in kline:
                 a = kline[4:6]
