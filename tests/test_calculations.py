@@ -3,7 +3,7 @@ import numpy as np
 
 from aiida import orm
 
-from aiida_yambo_wannier90.calculations.kmesh import (
+from aiida_yambo_wannier90.calculations.functions.kmesh import (
     find_commensurate_integers,
     find_commensurate_meshes,
     kmapper,

@@ -84,7 +84,7 @@ def kmapper(
                 k_list.append(count)
             count = count + 1
 
-    qpkrange = [(_, _, start_band.value, end_band.value) for _ in k_list]
+    qpkrange = [[_, _, start_band.value, end_band.value] for _ in k_list]
 
     return orm.List(list=qpkrange)
 
