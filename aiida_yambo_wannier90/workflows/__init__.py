@@ -327,6 +327,9 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
         protocol: str = None,
         overrides: dict = None,
         pseudo_family: str = "PseudoDojo/0.4/PBE/SR/standard/upf",
+        NLCC=True,
+        RIM_v=True,
+        RIM_W=False,
     ) -> ProcessBuilder:
         """Return a builder prepopulated with inputs selected according to the chosen protocol.
 
@@ -371,12 +374,16 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
         builder.structure = structure
 
         # Prepare yambo
-        yambo_builder = get_builder_yambo(
+        yambo_builder = YamboConvergence.get_builder_from_protocol(
             pw_code=codes["pw"],
             p2y_code=codes["p2y"],
             yambo_code=codes["yambo"],
+            protocol="moderate",
             structure=structure,
             pseudo_family=pseudo_family,
+            NLCC=NLCC,
+            RIM_v=RIM_v,
+            RIM_W=RIM_W,
         )
         inputs.yambo = yambo_builder._inputs(
             prune=True
@@ -393,46 +400,20 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
             prune=True
         )  # pylint: disable=protected-access
 
-        # Ypp
+        # Ypp; without a parent_folder for now. We should set it during the input preparation
         ypp_builder = YppRestart.get_builder_from_protocol(
             code=codes["ypp"],
+            protocol='Wannier',
         )
 
-        metadata = {
-            "options": {
-                # 'queue_name': 'debug',
-                # 'account': 'mr0',
-                "resources": {
-                    "num_machines": 1,
-                    "num_mpiprocs_per_machine": 1,
-                    "num_cores_per_mpiproc": 1,
-                },
-                "prepend_text": "export OMP_NUM_THREADS="
-                + str(1)
-                + "\nmv ./SAVE/ndb.QP* .",
-                # 'max_wallclock_seconds': 60 * 5 * 1,
-                "withmpi": True,
-            },
-        }
-        ypp_builder.ypp.metadata = metadata
-        ypp_builder.ypp.parameters = orm.Dict(
-            dict={
-                # 'arguments': ['infver', 'QPDBs', 'QPDB_merge'],
-                # 'variables': {
-                #     'BoseTemp': [0, 'eV'],
-                # },
-                "arguments": [
-                    "wannier",
-                ],
-                "variables": {
-                    "WriteAMU": "",
-                },
-            }
+        #ypp_builder.ypp.QP_calculations = List(
+        #    list=[1948, 1980, 2006, 2064, 2151, 2176, 2215, 2253]
+        #)
+        #ypp_builder.QP_DB = load_node(2329)
+        inputs.ypp = ypp_builder._inputs(
+            prune=True
         )
-        ypp_builder.ypp.QP_calculations = List(
-            list=[1948, 1980, 2006, 2064, 2151, 2176, 2215, 2253]
-        )
-        ypp_builder.QP_DB = load_node(2329)
+
 
         builder = cls.get_builder()
         builder = recursive_merge_builder(builder, inputs)
@@ -671,7 +652,7 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
         return inputs
 
     def run_yambo_qp(self) -> ty.Dict:
-        """Run the `Wannier90BandsWorkChain`."""
+        """Run the `YamboWorkflow`."""
         inputs = self.prepare_yambo_qp_inputs()
 
         inputs.metadata.call_link_label = "yambo_qp"
@@ -705,7 +686,7 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
         ).yres
 
         if self.should_run_yambo_convergence():
-            inputs.parent_folder = self.ctx.wkchain_yambo_conv.outputs.remote_folder
+            inputs.parent_folder = self.ctx.wkchain_yambo_conv.outputs.remote_folder #working if merge is not needed
 
         if "nnkp_file" not in inputs:
             inputs.nnkp_file = self.ctx.wkchain_wannier90.outputs.wannier90_pp.nnkp_file
