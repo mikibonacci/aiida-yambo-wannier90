@@ -385,7 +385,7 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
             RIM_v=RIM_v,
             RIM_W=RIM_W,
         )
-        inputs['yambo'] = yambo_builder._inputs(
+        inputs["yambo"] = yambo_builder._inputs(
             prune=True
         )  # pylint: disable=protected-access
 
@@ -396,29 +396,49 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
             pseudo_family=pseudo_family,
             exclude_semicore=False,
         )
-        inputs['wannier90'] = wannier_builder._inputs(
+        inputs["wannier90"] = wannier_builder._inputs(
             prune=True
         )  # pylint: disable=protected-access
+        inputs["wannier90"].pop("structure", None)
+        inputs["wannier90"].pop("clean_workdir", None)
+
+        # Prepare yambo_qp
+        # yambo_qp_builder = YamboWorkflow.get_builder_from_protocol(
+        #     pw_code=codes['pw'],
+        #     preprocessing_code=codes['p2y'],
+        #     code=codes['yambo'],
+        # )
+        # inputs["yambo_qp"] = yambo_qp_builder._inputs(prune=True)
+        # inputs["yambo_qp"].pop("clean_workdir", None)
 
         # Ypp; without a parent_folder for now. We should set it during the input preparation
         ypp_builder = YppRestart.get_builder_from_protocol(
             code=codes["ypp"],
-            protocol='Wannier',
+            protocol="Wannier",
         )
 
-        #ypp_builder.ypp.QP_calculations = List(
+        # ypp_builder.ypp.QP_calculations = List(
         #    list=[1948, 1980, 2006, 2064, 2151, 2176, 2215, 2253]
-        #)
-        #ypp_builder.QP_DB = load_node(2329)
-        inputs['ypp'] = ypp_builder._inputs(
-            prune=True
-        )
+        # )
+        # ypp_builder.QP_DB = load_node(2329)
+        inputs["ypp"] = ypp_builder._inputs(prune=True)
+        inputs["ypp"].pop("clean_workdir", None)
 
+        # Prepare gw2wannier90
+        inputs["gw2wannier90"] = {
+            "code": codes["gw2wannier90"],
+        }
+
+        # Prepare wannier90_qp
+        # wannier90_qp_builder = Wannier90BaseWorkChain.get_builder_from_protocol(
+        #     codes=codes['wannier90'],
+        #     structure=structure,
+        # )
+        # inputs["wannier90_qp"] = wannier90_qp_builder._inputs(prune=True)
+        # inputs["wannier90_qp"].pop("structure", None)
+        # inputs["wannier90_qp"].pop("clean_workdir", None)
 
         builder = cls.get_builder()
-        from pprint import pprint
-        pprint(builder)
-        pprint(inputs)
         builder = recursive_merge_builder(builder, inputs)
 
         return builder
@@ -689,7 +709,9 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
         ).yres
 
         if self.should_run_yambo_convergence():
-            inputs.parent_folder = self.ctx.wkchain_yambo_conv.outputs.remote_folder #working if merge is not needed
+            inputs.parent_folder = (
+                self.ctx.wkchain_yambo_conv.outputs.remote_folder
+            )  # working if merge is not needed
 
         if "nnkp_file" not in inputs:
             inputs.nnkp_file = self.ctx.wkchain_wannier90.outputs.wannier90_pp.nnkp_file
