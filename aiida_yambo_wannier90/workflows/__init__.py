@@ -376,8 +376,8 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
         # Prepare yambo
         yambo_builder = YamboConvergence.get_builder_from_protocol(
             pw_code=codes["pw"],
-            p2y_code=codes["p2y"],
-            yambo_code=codes["yambo"],
+            preprocessing_code=codes["p2y"],
+            code=codes["yambo"],
             protocol="moderate",
             structure=structure,
             pseudo_family=pseudo_family,
@@ -385,7 +385,7 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
             RIM_v=RIM_v,
             RIM_W=RIM_W,
         )
-        inputs.yambo = yambo_builder._inputs(
+        inputs['yambo'] = yambo_builder._inputs(
             prune=True
         )  # pylint: disable=protected-access
 
@@ -396,7 +396,7 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
             pseudo_family=pseudo_family,
             exclude_semicore=False,
         )
-        inputs.wannier = wannier_builder._inputs(
+        inputs['wannier90'] = wannier_builder._inputs(
             prune=True
         )  # pylint: disable=protected-access
 
@@ -410,12 +410,15 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
         #    list=[1948, 1980, 2006, 2064, 2151, 2176, 2215, 2253]
         #)
         #ypp_builder.QP_DB = load_node(2329)
-        inputs.ypp = ypp_builder._inputs(
+        inputs['ypp'] = ypp_builder._inputs(
             prune=True
         )
 
 
         builder = cls.get_builder()
+        from pprint import pprint
+        pprint(builder)
+        pprint(inputs)
         builder = recursive_merge_builder(builder, inputs)
 
         return builder
