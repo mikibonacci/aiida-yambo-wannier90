@@ -47,18 +47,6 @@ def validate_inputs(
 ) -> None:
     """Validate the inputs of the entire input namespace."""
 
-    required_namespaces = ["yambo", "yambo_qp"]
-    if all(_ not in inputs for _ in required_namespaces):
-        raise ValueError(
-            f"At least one of the {required_namespaces} should be provided."
-        )
-
-    required_namespaces = ["wannier90", "wannier90_qp"]
-    if all(_ not in inputs for _ in required_namespaces):
-        raise ValueError(
-            f"At least one of the {required_namespaces} should be provided."
-        )
-
     order = ["yambo", "wannier90", "yambo_qp", "ypp", "gw2wannier90", "wannier90_qp"]
     presented = [_ in inputs for _ in order]
     first_input = presented.index(True)
@@ -67,24 +55,28 @@ def validate_inputs(
         if any(not_presented[first_input + 1 :]):
             first_no_input = first_input + 1
             first_no_input += not_presented[first_input + 1 :].index(True)
-            # TODO Two special cases,
-            # yambo_qp can be auto-generated from yambo
-            # wannier90_qp can be auto-generated from wannier90
-            raise ValueError(
+            return (
                 f"Workchain must be run in order, {order[first_input]} is provided "
                 f"but {order[first_no_input]} is absent."
             )
 
-    if "wannier" not in inputs:
-        if "nnkp" not in inputs.gw2wannier90:
-            raise ValueError(
-                "`inputs.wannier` is absent and no `nnkp` in `inputs.gw2wannier90`"
-            )
+    if "wannier90" not in inputs:
+        if "gw2wannier90" in inputs and "nnkp" not in inputs["gw2wannier90"]:
+            return "`inputs.wannier90` is empty and no `nnkp` in `inputs.gw2wannier90`"
 
     if "ypp" not in inputs:
-        if "unsorted_eig" not in inputs.gw2wannier90:
-            raise ValueError(
-                "`inputs.ypp` is absent and no `unsorted_eig` in `inputs.gw2wannier90`"
+        if "gw2wannier90" in inputs and "unsorted_eig" not in inputs["gw2wannier90"]:
+            return (
+                "`inputs.ypp` is empty and no `unsorted_eig` in `inputs.gw2wannier90`"
+            )
+
+    if "gw2wannier90" in inputs:
+        if "remote_input_folder" in inputs["wannier90_qp"]["wannier90"]:
+            return (
+                "Requested to run a `gw2wannier90`, but the "
+                "`inputs.wannier90_qp.wannier90.remote_input_folder` is non-empty, "
+                "I will use `gw2wannier90.remote_folder` as the `remote_input_folder` "
+                "for wannier90_qp step."
             )
 
 
@@ -135,6 +127,7 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
             namespace_options={
                 "help": "Inputs for the `YamboConvergence` for yambo calculation.",
                 "required": False,
+                "populate_defaults": False,
             },
         )
         spec.expose_inputs(
@@ -149,6 +142,7 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
             namespace_options={
                 "help": "Inputs for the `Wannier90OptimizeWorkChain` for wannier90 calculation.",
                 "required": False,
+                "populate_defaults": False,
             },
         )
         spec.expose_inputs(
@@ -161,6 +155,7 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
                     "If not provided, it will be generated based on the previous converged inputs."
                 ),
                 "required": False,
+                "populate_defaults": False,
             },
         )
         spec.expose_inputs(
@@ -170,15 +165,17 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
             namespace_options={
                 "help": "Inputs for the `YppRestart` calculation. ",
                 "required": False,
+                "populate_defaults": False,
             },
         )
         spec.expose_inputs(
             Gw2wannier90Calculation,
             namespace="gw2wannier90",
-            exclude=("clean_workdir", "structure"),
+            exclude=("clean_workdir",),
             namespace_options={
                 "help": "Inputs for the `Gw2wannier90Calculation`. ",
                 "required": False,
+                "populate_defaults": False,
             },
         )
         spec.expose_inputs(
@@ -186,7 +183,7 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
             namespace="wannier90_qp",
             exclude=(
                 "clean_workdir",
-                "structure",
+                "wannier90.structure",
                 "wannier90.kpoint_path",
                 "wannier90.bands_kpoints",
             ),
@@ -195,7 +192,7 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
                     "Inputs for the `Wannier90BaseWorkChain` for wannier90 QP calculation. "
                     "If not provided, it will be generated based on the previous wannier inputs."
                 ),
-                "required": False,
+                "required": True,
             },
         )
 
@@ -214,7 +211,9 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
             help="The parameters used in the SeeKpath call to normalize the input or relaxed structure.",
         )
         spec.expose_outputs(
-            YamboConvergence, namespace="yambo", namespace_options={"required": False}
+            YamboConvergence,
+            namespace="yambo",
+            namespace_options={"required": False},
         )
         spec.expose_outputs(
             Wannier90OptimizeWorkChain,
@@ -222,17 +221,35 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
             namespace_options={"required": False},
         )
         spec.expose_outputs(
-            YamboWorkflow, namespace="yambo_qp", namespace_options={"required": False}
+            YamboWorkflow,
+            namespace="yambo_qp",
+            namespace_options={"required": False},
         )
         spec.expose_outputs(
-            YppRestart, namespace="ypp", namespace_options={"required": False}
+            YppRestart,
+            namespace="ypp",
+            namespace_options={"required": False},
         )
         spec.expose_outputs(
             Gw2wannier90Calculation,
             namespace="gw2wannier90",
             namespace_options={"required": False},
         )
-        spec.expose_outputs(Wannier90BaseWorkChain, namespace="wannier90_qp")
+        spec.expose_outputs(
+            Wannier90BaseWorkChain,
+            namespace="wannier90_qp",
+        )
+        spec.output(
+            "band_structures.wannier90",
+            valid_type=orm.BandsData,
+            required=False,
+            help="The Wannier interpolated band structure at DFT level.",
+        )
+        spec.output(
+            "band_structures.wannier90_qp",
+            valid_type=orm.BandsData,
+            help="The Wannier interpolated band structure at G0W0 level.",
+        )
 
         spec.outline(
             cls.setup,
@@ -243,10 +260,12 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
                 cls.run_yambo_convergence,
                 cls.inspect_yambo_convergence,
             ),
-            cls.setup_kmesh,
-            if_(cls.should_run_wannier)(
-                cls.run_wannier,
-                cls.inspect_wannier,
+            if_(cls.should_run_setup_kmesh)(
+                cls.setup_kmesh,
+            ),
+            if_(cls.should_run_wannier90)(
+                cls.run_wannier90,
+                cls.inspect_wannier90,
             ),
             if_(cls.should_run_yambo_qp)(
                 cls.run_yambo_qp,
@@ -263,8 +282,8 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
                 cls.run_gw2wannier90,
                 cls.inspect_gw2wannier90,
             ),
-            cls.run_wannier_qp,
-            cls.inspect_wannier_qp,
+            cls.run_wannier90_qp,
+            cls.inspect_wannier90_qp,
             cls.results,
         )
 
@@ -305,7 +324,7 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
         )
         spec.exit_code(
             408,
-            "ERROR_SUB_PROCESS_FAILED_WANNIER_QP",
+            "ERROR_SUB_PROCESS_FAILED_WANNIER90_QP",
             message="Unrecoverable error when running wannier with QP-corrected eig.",
         )
 
@@ -448,9 +467,16 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
 
         self.ctx.current_structure = self.inputs.structure
 
+        if "bands_kpoints" in self.inputs:
+            self.ctx.current_bands_kpoints = self.inputs.bands_kpoints
+
         # Commensurate meshes for GW and W90
         self.ctx.kpoints_gw = None
         self.ctx.kpoints_w90 = None
+
+        if not self.should_run_yambo_qp():
+            # No need to setup kmesh
+            return
 
         if self.should_run_yambo_convergence():
             self.ctx.kpoints_gw = self.inputs.yambo.nscf.kpoints
@@ -463,7 +489,7 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
             calc_nscf = wkchain_gw.inputs.parent_folder.creator
             self.ctx.kpoints_gw = calc_nscf.inputs.kpoints
 
-        if self.should_run_wannier():
+        if self.should_run_wannier90():
             self.ctx.kpoints_w90 = self.inputs.wannier90.nscf.kpoints
         else:
             self.ctx.kpoints_w90 = self.inputs.wannier90_qp.wannier90.kpoints
@@ -530,6 +556,10 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
 
         self.ctx.kpoints_gw = wkchain.inputs.nscf.kpoints
 
+    def should_run_setup_kmesh(self) -> bool:
+        """Whether to run setup_kmesh."""
+        return self.should_run_wannier90() or self.should_run_yambo_qp()
+
     def setup_kmesh(self) -> None:
         """Find commensurate kmeshes for both Yambo and wannier90."""
         kpoints_gw = self.ctx.kpoints_gw
@@ -549,7 +579,7 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
             f"Found commensurate meshes GW = {dense_mesh}, W90 = {coarse_mesh}."
         )
 
-        if self.should_run_wannier():
+        if self.should_run_wannier90():
             # Use theses meshes before submitting the corresponding workflow
             self.ctx.kpoints_w90 = get_explicit_kpoints_from_mesh(kmesh_w90)
         else:
@@ -571,14 +601,14 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
                 )
                 return self.exit_codes.ERROR_SUB_PROCESS_FAILED_SETUP_KMESH
 
-    def should_run_wannier(self) -> bool:
+    def should_run_wannier90(self) -> bool:
         """Whether to run wannier."""
         if "wannier90" in self.inputs:
             return True
 
         return False
 
-    def run_wannier(self) -> ty.Dict:
+    def run_wannier90(self) -> ty.Dict:
         """Run the `Wannier90BandsWorkChain`."""
         inputs = AttributeDict(
             self.exposed_inputs(Wannier90OptimizeWorkChain, namespace="wannier90")
@@ -595,7 +625,7 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
 
         return ToContext(wkchain_wannier90=running)
 
-    def inspect_wannier(self) -> ty.Union[None, ExitCode]:
+    def inspect_wannier90(self) -> ty.Union[None, ExitCode]:
         """Verify that the `Wannier90BandsWorkChain` successfully finished."""
         wkchain = self.ctx.wkchain_wannier90
 
@@ -608,9 +638,6 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
     def should_run_yambo_qp(self) -> bool:
         """Whether to run yambo_qp."""
         if "yambo_qp" in self.inputs:
-            return True
-
-        if "yambo" in self.inputs:
             return True
 
         return False
@@ -637,7 +664,7 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
             inputs = converged_wkchain.inputs._construct_attribute_dict(True)
 
         # Prepare QPkrange
-        if self.should_run_wannier():
+        if self.should_run_wannier90():
             w90_calc_inputs = self.ctx.wkchain_wannier90.inputs.wannier90.wannier90
         else:
             w90_calc_inputs = self.inputs.wannier90_qp.wannier90
@@ -648,6 +675,7 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
         start_band = max(exclude_bands) + 1
         end_band = start_band + num_bands - 1
 
+        # TODO in the other branch, converged_wkchain is undefined
         p2y_nscf_wkchain = (
             converged_wkchain.get_outgoing(
                 link_label_filter="nscf",
@@ -667,7 +695,6 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
 
         # Set QPkrange in GW parameters
         yambo_params = inputs.parameters.get_dict()
-        # TODO what is the empty string?
         yambo_params["variables"]["QPkrange"] = [qpkrange, ""]
 
         inputs.parameters = orm.Dict(dict=yambo_params)
@@ -753,7 +780,7 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
         )
         inputs.metadata.call_link_label = "gw2wannier90"
 
-        if self.should_run_wannier():
+        if self.should_run_wannier90():
             inputs.nnkp = self.ctx.wkchain_wannier90.outputs.wannier90_pp.nnkp_file
 
         if self.should_run_ypp():
@@ -775,16 +802,19 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
             )
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_GW2WANNIER90
 
-    def run_wannier_qp(self) -> ty.Dict:
-        """Run the `wannier_qp`."""
-        if "wannier90_qp" in self.inputs:
-            inputs = AttributeDict(
-                self.exposed_inputs(Wannier90BaseWorkChain, namespace="wannier90_qp")
+    def run_wannier90_qp(self) -> ty.Dict:
+        """Run the `wannier90 qp`."""
+        inputs = AttributeDict(
+            self.exposed_inputs(Wannier90BaseWorkChain, namespace="wannier90_qp")
+        )
+
+        inputs.wannier90.structure = self.ctx.current_structure
+        inputs.wannier90.bands_kpoints = self.ctx.current_bands_kpoints
+
+        if self.should_run_gw2wannier90():
+            inputs.wannier90.remote_input_folder = (
+                self.ctx.calc_gw2wannier90.outputs.remote_folder
             )
-        else:
-            wannier_wkchain = self.ctx.wkchain_wannier90
-            # TODO shift_energy_windows, use fixed inputs.parameters
-            inputs = wannier_wkchain.inputs._construct_attribute_dict(True)
 
         inputs.metadata.call_link_label = "wannier90_qp"
         inputs = prepare_process_inputs(Wannier90BaseWorkChain, inputs)
@@ -793,7 +823,7 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
 
         return ToContext(wkchain_wannier90_qp=running)
 
-    def inspect_wannier_qp(self) -> ty.Union[None, ExitCode]:
+    def inspect_wannier90_qp(self) -> ty.Union[None, ExitCode]:
         """Verify that the `Wannier90BaseWorkChain` successfully finished."""
         wkchain = self.ctx.wkchain_wannier90_qp
 
@@ -801,7 +831,7 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
             self.report(
                 f"{wkchain.process_label} failed with exit status {wkchain.exit_status}"
             )
-            return self.exit_codes.ERROR_SUB_PROCESS_FAILED_WANNIER_QP
+            return self.exit_codes.ERROR_SUB_PROCESS_FAILED_WANNIER90_QP
 
     def results(self) -> None:
         """Attach the relevant output nodes."""
@@ -859,6 +889,13 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
             )
         )
 
+        if self.should_run_wannier90():
+            bands_w90 = self.outputs["wannier90"]["interpolated_bands"]
+            self.out("band_structures.wannier90", bands_w90)
+
+        bands_w90qp = self.outputs["wannier90_qp"]["interpolated_bands"]
+        self.out("band_structures.wannier90_qp", bands_w90qp)
+
         self.report(f"{self.get_name()} successfully completed")
 
     def on_terminated(self):
@@ -883,116 +920,3 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
             self.report(
                 f"cleaned remote folders of calculations: {' '.join(map(str, cleaned_calcs))}"
             )
-
-
-def get_builder_yambo(
-    pw_code: orm.Code,
-    p2y_code: orm.Code,
-    yambo_code: orm.Code,
-    structure: orm.StructureData,
-    pseudo_family: str,
-) -> ProcessBuilder:
-
-    # TODO yamboworkflow run seekpath -> primitive cell?
-    metadata_pw = {
-        "options": {
-            # 'queue_name':'s3par',
-            "resources": {
-                "num_machines": 1,
-                # 'num_mpiprocs_per_machine': 8,
-                "num_cores_per_mpiproc": 1,
-            },
-            "prepend_text": "export OMP_NUM_THREADS=" + str(1),
-            "max_wallclock_seconds": 43200,
-            "withmpi": True,
-        },
-    }
-
-    ecutwfc = 80
-    overrides_scf = {
-        "pseudo_family": pseudo_family,
-        "pw": {
-            "parameters": {
-                "SYSTEM": {
-                    "ecutwfc": ecutwfc,
-                    "force_symmorphic": True,
-                },
-            },
-            "metadata": metadata_pw,
-        },
-    }
-
-    overrides_nscf = {
-        "pseudo_family": pseudo_family,
-        "pw": {
-            "parameters": {
-                "CONTROL": {
-                    "calculation": "nscf",
-                },
-                "SYSTEM": {
-                    "ecutwfc": ecutwfc,
-                    "force_symmorphic": True,
-                },
-            },
-            "metadata": metadata_pw,
-        },
-    }
-
-    overrides_yambo = {
-        "clean_workdir": False,
-        "metadata": {
-            "options": {
-                # 'queue_name':'s3par',
-                "resources": {
-                    "num_machines": 1,
-                    # 'num_mpiprocs_per_machine': 8,
-                    "num_cores_per_mpiproc": 1,
-                },
-                "prepend_text": "export OMP_NUM_THREADS=" + str(1),
-                "max_wallclock_seconds": 60 * 60 * 1,
-                "withmpi": True,
-            },
-        },
-        "yambo": {
-            "parameters": {
-                "arguments": [
-                    "NLCC",
-                    "rim_cut",
-                ],
-                "variables": {
-                    "NGsBlkXp": [4, "Ry"],
-                    "BndsRnXp": [[1, 200], ""],
-                    "GbndRnge": [[1, 200], ""],
-                    "RandQpts": [5000000, ""],
-                    "RandGvec": [100, "RL"],
-                    #'X_and_IO_CPU' : '1 1 1 32 1',
-                    #'X_and_IO_ROLEs' : 'q k g c v',
-                    #'DIP_CPU' :'1 32 1',
-                    #'DIP_ROLEs' : 'k c v',
-                    #'SE_CPU' : '1 1 32',
-                    #'SE_ROLEs' : 'q qp b',
-                    "QPkrange": [[[1, 1, 32, 32]], ""],
-                },
-            },
-        },
-    }
-
-    overrides = {
-        "ywfl": {
-            "scf": overrides_scf,
-            "nscf": overrides_nscf,
-            "yres": overrides_yambo,
-        }
-    }
-
-    yambo_builder = YamboConvergence.get_builder_from_protocol(
-        pw_code=pw_code,
-        p2y_code=p2y_code,
-        code=yambo_code,
-        protocol="moderate",
-        structure=structure,
-        overrides=overrides,
-        # parent_folder=load_node(225176).outputs.remote_folder,
-    )
-
-    return yambo_builder
