@@ -1,73 +1,96 @@
 #!/usr/bin/env python
-"""Run a test calculation on localhost.
+"""Run a ``Wannier90BandsWorkChain``.
 
 Usage: ./example_01.py
 """
-from os import path
+import pathlib
 
 import click
 
-from aiida import cmdline, engine
-from aiida.plugins import CalculationFactory, DataFactory
+from aiida import cmdline, orm
 
-from aiida_yambo_wannier90 import helpers
+from aiida_wannier90_workflows.common.types import WannierProjectionType
+from aiida_wannier90_workflows.utils.kpoints import get_explicit_kpoints_from_mesh
+from aiida_wannier90_workflows.utils.structure import read_structure
+from aiida_wannier90_workflows.utils.workflows.builder import (
+    print_builder,
+    set_parallelization,
+    submit_and_add_group,
+)
+from aiida_wannier90_workflows.workflows import Wannier90BandsWorkChain
 
-INPUT_DIR = path.join(path.dirname(path.realpath(__file__)), "input_files")
+INPUT_DIR = pathlib.Path(__file__).absolute().parent / "input_files" / "example_01"
 
 
-def test_run(yambo_wannier90_code):
-    """Run a calculation on the localhost computer.
+def submit(group: orm.Group = None, dry_run: bool = True):
+    """Submit a ``Wannier90BandsWorkChain``.
 
-    Uses test helpers to create AiiDA Code on the fly.
+    Using parameters roughly the same as wannier90/example23.
     """
-    if not yambo_wannier90_code:
-        # get code
-        computer = helpers.get_computer()
-        yambo_wannier90_code = helpers.get_code(
-            entry_point="yambo_wannier90", computer=computer
-        )
-
-    # Prepare input parameters
-    DiffParameters = DataFactory("yambo_wannier90")
-    parameters = DiffParameters({"ignore-case": True})
-
-    SinglefileData = DataFactory("singlefile")
-    file1 = SinglefileData(file=path.join(INPUT_DIR, "file1.txt"))
-    file2 = SinglefileData(file=path.join(INPUT_DIR, "file2.txt"))
-
-    # set up calculation
-    inputs = {
-        "code": yambo_wannier90_code,
-        "parameters": parameters,
-        "file1": file1,
-        "file2": file2,
-        "metadata": {
-            "description": "Test job submission with the aiida_yambo_wannier90 plugin",
-        },
+    codes = {
+        "pw": "qe-git-pw@prnmarvelcompute5",
+        "pw2wannier90": "qe-git-pw2wannier90@prnmarvelcompute5",
+        "wannier90": "wannier90-git-wannier90@prnmarvelcompute5",
     }
 
-    # Note: in order to submit your calculation to the aiida daemon, do:
-    # from aiida.engine import submit
-    # future = submit(CalculationFactory('yambo_wannier90'), **inputs)
-    result = engine.run(CalculationFactory("yambo_wannier90"), **inputs)
+    # Silicon
+    structure = read_structure(INPUT_DIR / "Si2.cif")
+    # structure = orm.load_node(139524)
 
-    computed_diff = result["yambo_wannier90"].get_content()
-    print(f"Computed diff between files: \n{computed_diff}")
+    # Run a Wannier90BandsWorkChain with the same params as example23
+    builder = Wannier90BandsWorkChain.get_builder_from_protocol(
+        codes=codes,
+        structure=structure,
+        projection_type=WannierProjectionType.ANALYTIC,
+        # Use NCPP in Yambo
+        pseudo_family="PseudoDojo/0.4/PBE/SR/standard/upf",
+    )
+
+    # Use 4x4x4 kmesh
+    kpoints = get_explicit_kpoints_from_mesh(structure, [4, 4, 4])
+    builder.wannier90.wannier90.kpoints = kpoints
+    builder.nscf.kpoints = kpoints
+
+    # Change number of bands as example23
+    parameters = builder.nscf.pw.parameters.get_dict()
+    parameters["SYSTEM"]["nbnd"] = 14
+    builder.nscf.pw.parameters = orm.Dict(dict=parameters)
+    # Change wannier90 num_bands
+    parameters = builder.wannier90.wannier90.parameters.get_dict()
+    parameters["num_bands"] = 14
+    parameters["mp_grid"] = [4, 4, 4]
+    builder.wannier90.wannier90.parameters = orm.Dict(dict=parameters)
+
+    # Set parallelization
+    parallelization = {
+        "npool": 1,
+        "num_mpiprocs_per_machine": 8,
+        # 'npool': 8,
+        # 'num_mpiprocs_per_machine': 48,
+    }
+    builder = set_parallelization(builder, parallelization)
+
+    print_builder(builder)
+
+    if not dry_run:
+        submit_and_add_group(builder, group)
 
 
 @click.command()
 @cmdline.utils.decorators.with_dbenv()
-@cmdline.params.options.CODE()
-def cli(code):
-    """Run example.
-
-    Example usage: $ ./example_01.py --code diff@localhost
-
-    Alternative (creates diff@localhost-test code): $ ./example_01.py
-
-    Help: $ ./example_01.py --help
-    """
-    test_run(code)
+@click.option(
+    "--run",
+    "-r",
+    is_flag=True,
+    help="Submit workchain.",
+)
+@cmdline.params.options.GROUP(
+    help="The group to add the submitted workchain.",
+)
+def cli(run, group):
+    """Run a ``Wannier90BandsWorkChain``."""
+    dry_run = not run
+    submit(group, dry_run)
 
 
 if __name__ == "__main__":
