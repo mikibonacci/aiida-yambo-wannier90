@@ -9,6 +9,7 @@ import click
 
 from aiida import cmdline, orm
 
+from aiida_wannier90_workflows.cli.params import RUN
 from aiida_wannier90_workflows.common.types import WannierProjectionType
 from aiida_wannier90_workflows.utils.kpoints import get_explicit_kpoints_from_mesh
 from aiida_wannier90_workflows.utils.structure import read_structure
@@ -22,7 +23,7 @@ from aiida_wannier90_workflows.workflows import Wannier90BandsWorkChain
 INPUT_DIR = pathlib.Path(__file__).absolute().parent / "input_files" / "example_01"
 
 
-def submit(group: orm.Group = None, dry_run: bool = True):
+def submit(group: orm.Group = None, run: bool = False):
     """Submit a ``Wannier90BandsWorkChain``.
 
     Using parameters roughly the same as wannier90/example23.
@@ -72,7 +73,7 @@ def submit(group: orm.Group = None, dry_run: bool = True):
 
     print_builder(builder)
 
-    if not dry_run:
+    if run:
         submit_and_add_group(builder, group)
 
 
@@ -81,16 +82,10 @@ def submit(group: orm.Group = None, dry_run: bool = True):
 @cmdline.params.options.GROUP(
     help="The group to add the submitted workchain.",
 )
-@click.option(
-    "--run",
-    "-r",
-    is_flag=True,
-    help="Submit workchain.",
-)
+@RUN()
 def cli(group, run):
     """Run a ``Wannier90BandsWorkChain``."""
-    dry_run = not run
-    submit(group, dry_run)
+    submit(group, run)
 
 
 if __name__ == "__main__":
