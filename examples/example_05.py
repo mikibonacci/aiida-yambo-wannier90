@@ -23,9 +23,11 @@ INPUT_DIR = pathlib.Path(__file__).absolute().parent / "input_files" / "example_
 def submit(group: orm.Group = None, run: bool = False):
     """Submit a ``Gw2wannier90Calculation``."""
 
-    # code = orm.load_code('gw2wannier90@localhost')
-    # computer = code.computer
-    # parent_folder = orm.RemoteData(remote_path=str(INPUT_DIR / "unsorted"), computer=computer)
+    # Test Gw2wannier90Calculation with local inputs
+    # code = orm.load_code("gw2wannier90@localhost")
+    # parent_folder = orm.RemoteData(
+    #     remote_path=str(INPUT_DIR / "unsorted"), computer=code.computer
+    # )
     # nnkp = orm.SinglefileData(file=INPUT_DIR / "aiida.nnkp")
     # unsorted_eig = orm.SinglefileData(file=INPUT_DIR / "aiida.gw.unsorted.eig")
 
@@ -36,8 +38,6 @@ def submit(group: orm.Group = None, run: bool = False):
     unsorted_eig = orm.SinglefileData(file=INPUT_DIR / "aiida.gw.unsorted.eig")
 
     builder = Gw2wannier90Calculation.get_builder()
-
-    # Set up calculation
 
     builder["code"] = code
     builder["parent_folder"] = parent_folder
