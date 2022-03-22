@@ -1,49 +1,73 @@
-#!/usr/bin/env runaiida
-"""Run a test calculation on localhost.
+#!/usr/bin/env python
+"""Run a ``PwBaseWorkChain`` for PW band structure.
 
 Usage: ./example_02.py
 """
-import pathlib
+import click
 
-from aiida import orm, engine
+from aiida import cmdline, orm
 
-from aiida_yambo_wannier90.calculations.gw2wannier90 import Gw2wannier90Calculation
+from aiida_wannier90_workflows.cli.types import FilteredWorkflowParamType
+from aiida_wannier90_workflows.utils.workflows.builder import (
+    print_builder,
+    submit_and_add_group,
+)
+from aiida_wannier90_workflows.utils.workflows.builder.generator import (
+    get_pwbands_builder,
+)
+from aiida_wannier90_workflows.workflows import Wannier90BandsWorkChain
 
-INPUT_DIR = pathlib.Path(__file__).absolute().parent / "input_files" / "example_02"
+
+def submit(
+    w90_wkchain: Wannier90BandsWorkChain, group: orm.Group = None, dry_run: bool = True
+):
+    """Submit a ``PwBaseWorkChain`` to calculate PW bands.
+
+    Load a finished ``Wannier90BandsWorkChain``, and reuse the scf calculation.
+    """
+    builder = get_pwbands_builder(w90_wkchain)
+
+    builder["pw"]["parallelization"] = orm.Dict(
+        dict={
+            "npool": 8,
+        }
+    )
+
+    print_builder(builder)
+
+    if not dry_run:
+        submit_and_add_group(builder, group)
 
 
-def main():
+@click.command()
+@cmdline.utils.decorators.with_dbenv()
+@cmdline.params.arguments.WORKFLOW(
+    type=FilteredWorkflowParamType(
+        process_classes=(
+            "aiida.workflows:wannier90_workflows.bands",
+            "aiida.workflows:wannier90_workflows.optimize",
+        )
+    ),
+)
+@click.option(
+    "--run",
+    "-r",
+    is_flag=True,
+    help="Submit workchain.",
+)
+@cmdline.params.options.GROUP(
+    help="The group to add the submitted workchain.",
+)
+def cli(workflow, run, group):
+    """Run a ``PwBaseWorkChain`` for PW band structure.
 
-    code = orm.load_code('gw2wannier90@localhost')
+    Reuse the scf calculation from a finished Wannier90BandsWorkChain.
+    """
+    dry_run = not run
 
-    computer = orm.load_computer('localhost')
-    # parent_folder = orm.RemoteData(remote_path=str(INPUT_DIR / "unsorted"), computer=computer)
-    parent_folder = orm.load_node(139124)
-    print(parent_folder)
-
-    # nnkp = orm.SinglefileData(file=INPUT_DIR / "aiida.nnkp")
-    nnkp = orm.load_node(139125)
-    print(nnkp)
-
-    # unsorted_eig = orm.SinglefileData(file=INPUT_DIR / "aiida.gw.unsorted.eig")
-    unsorted_eig = orm.load_node(139126)
-    print(unsorted_eig)
-
-    # set up calculation
-    inputs = {
-        "code": code,
-        "parent_folder": parent_folder,
-        "nnkp": nnkp,
-        "unsorted_eig": unsorted_eig,
-        "metadata": {
-            "description": "Test job submission with the aiida_yambo_wannier90 plugin",
-        },
-    }
-
-    result = engine.submit(Gw2wannier90Calculation, **inputs)
-
-    print(f"Submitted {result}")
+    # workflow = orm.load_node(139623)
+    submit(workflow, group, dry_run)
 
 
 if __name__ == "__main__":
-    main()
+    cli()  # pylint: disable=no-value-for-parameter
