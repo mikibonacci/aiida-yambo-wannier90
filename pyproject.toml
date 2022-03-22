@@ -34,7 +34,7 @@ testing = [
     "pytest~=6.0",
     "pytest-cov"
 ]
-pre-commit = ["pre-commit~=2.2", "pylint>=2.5.0,<2.9"]
+pre-commit = ["pre-commit~=2.17", "pylint>=2.5.0,<2.9"]
 docs = [
     "sphinx",
     "sphinxcontrib-contentui",
@@ -89,7 +89,6 @@ source = ["aiida_yambo_wannier90"]
 [tool.isort]
 # Configuration of [isort](https://isort.readthedocs.io)
 profile = "black"
-line_length = 120
 force_sort_within_sections = true
 sections = [
     'FUTURE',
