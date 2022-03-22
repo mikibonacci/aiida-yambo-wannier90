@@ -78,16 +78,16 @@ def submit(group: orm.Group = None, dry_run: bool = True):
 
 @click.command()
 @cmdline.utils.decorators.with_dbenv()
+@cmdline.params.options.GROUP(
+    help="The group to add the submitted workchain.",
+)
 @click.option(
     "--run",
     "-r",
     is_flag=True,
     help="Submit workchain.",
 )
-@cmdline.params.options.GROUP(
-    help="The group to add the submitted workchain.",
-)
-def cli(run, group):
+def cli(group, run):
     """Run a ``Wannier90BandsWorkChain``."""
     dry_run = not run
     submit(group, dry_run)
