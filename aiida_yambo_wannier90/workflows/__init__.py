@@ -457,7 +457,6 @@ class YamboWannier90WorkChain(ProtocolMixin, WorkChain):
         # inputs["wannier90_qp"].pop("structure", None)
         # inputs["wannier90_qp"].pop("clean_workdir", None)
 
-        builder = cls.get_builder()
         builder = recursive_merge_builder(builder, inputs)
 
         return builder
