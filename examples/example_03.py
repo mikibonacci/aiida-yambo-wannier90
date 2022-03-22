@@ -1,42 +1,151 @@
-#!/usr/bin/env runaiida
-"""Run a ``YamboWannier90WorkChain``.
+#!/usr/bin/env python
+"""Launch a ``YamboWorkflow``.
 
 Usage: ./example_03.py
 """
-from aiida import orm, engine
+import click
 
-from aiida_wannier90_workflows.utils.workflows.builder import print_builder
+from aiida import cmdline, orm
 
-from aiida_yambo_wannier90.workflows import YamboWannier90WorkChain
+from aiida_wannier90_workflows.cli.params import RUN
+from aiida_wannier90_workflows.utils.kpoints import create_kpoints_from_mesh
+from aiida_wannier90_workflows.utils.workflows.builder import (
+    print_builder,
+    submit_and_add_group,
+)
 
 
-def main():
+def submit(group: orm.Group = None, run: bool = False):
+    """Submit a ``YamboWorkflow``."""
+    # pylint: disable=too-many-locals,import-outside-toplevel
+    from aiida_yambo.workflows.yambowf import YamboWorkflow
 
-    codes = {
-        "pw": 'qe-git-pw@prnmarvelcompute5',
-        "pw2wannier90": 'qe-git-pw2wannier90@prnmarvelcompute5',
-        "projwfc": 'qe-git-projwfc@prnmarvelcompute5',
-        "wannier90": 'wannier90-git-wannier90@prnmarvelcompute5',
-        "yambo": 'yambo-5.0-yambo@prnmarvelcompute5',
-        "p2y": 'yambo-5.0-p2y@prnmarvelcompute5',
-        "ypp": 'yambo-5.0-ypp@prnmarvelcompute5',
-        "gw2wannier90": 'gw2wannier90@prnmarvelcompute5',
+    # I need to use the seekpath-reduced primitive structure
+    w90_wkchain = orm.load_node(140073)  # Si
+    structure = w90_wkchain.outputs.primitive_structure
+
+    pw_code = orm.load_code("qe-git-pw@prnmarvelcompute5")
+    preprocessing_code = orm.load_code("yambo-5.0-p2y@prnmarvelcompute5")
+    code = orm.load_code("yambo-5.0-yambo@prnmarvelcompute5")
+
+    ecutwfc = 80
+    pseudo_family = "PseudoDojo/0.4/PBE/SR/standard/upf"
+
+    overrides_scf = {
+        "pseudo_family": pseudo_family,
+        "pw": {
+            "parameters": {
+                "SYSTEM": {
+                    "ecutwfc": ecutwfc,
+                },
+            },
+        },
     }
 
-    # Si2 from wannier90/example23
-    structure = orm.load_node(139524)
+    overrides_nscf = {
+        "pseudo_family": pseudo_family,
+        "pw": {
+            "parameters": {
+                "SYSTEM": {
+                    "ecutwfc": ecutwfc,
+                },
+            },
+        },
+    }
 
-    builder = YamboWannier90WorkChain.get_builder_from_protocol(
-        codes = codes,
-        structure = structure,
+    kpoints_nscf = create_kpoints_from_mesh(structure, [8, 8, 8])
+
+    overrides_yambo = {
+        "yambo": {
+            "parameters": {
+                "arguments": [
+                    "rim_cut",
+                ],
+                "variables": {
+                    "NGsBlkXp": [4, "Ry"],
+                    "BndsRnXp": [[1, 200], ""],
+                    "GbndRnge": [[1, 200], ""],
+                    "RandQpts": [5000000, ""],
+                    "RandGvec": [100, "RL"],
+                    #'X_and_IO_CPU' : '1 1 1 32 1',
+                    #'X_and_IO_ROLEs' : 'q k g c v',
+                    #'DIP_CPU' :'1 32 1',
+                    #'DIP_ROLEs' : 'k c v',
+                    #'SE_CPU' : '1 1 32',
+                    #'SE_ROLEs' : 'q qp b',
+                    # 'QPkrange': [[[1, 1, 32, 32]], ''],
+                    "QPkrange": [
+                        [
+                            [1, 1, 1, 14],
+                            [3, 3, 1, 14],
+                            [5, 5, 1, 14],
+                            [13, 13, 1, 14],
+                            [15, 15, 1, 14],
+                            [17, 17, 1, 14],
+                            [21, 21, 1, 14],
+                            [29, 29, 1, 14],
+                        ],
+                        "",
+                    ],
+                },
+            },
+        },
+    }
+
+    overrides = {"scf": overrides_scf, "nscf": overrides_nscf, "yres": overrides_yambo}
+
+    builder = YamboWorkflow.get_builder_from_protocol(
+        pw_code,
+        preprocessing_code,
+        code,
+        protocol_qe="fast",
+        protocol="fast",
+        structure=structure,
+        overrides=overrides,
+        # parent_folder=orm.load_node(225176).outputs.remote_folder,
     )
+
+    builder.nscf["kpoints"] = kpoints_nscf
+
+    builder["scf"]["pw"]["parallelization"] = orm.Dict(
+        dict={
+            "npool": 8,
+        }
+    )
+    builder["nscf"]["pw"]["parallelization"] = orm.Dict(
+        dict={
+            "npool": 8,
+        }
+    )
+
+    # The gaps that you want
+    # builder.additional_parsing = orm.List(
+    #     list=[
+    #         "gap_KK",
+    #         "gap_MM",
+    #         "gap_MK",
+    #         "gap_KG",
+    #         "gap_GG",
+    #         "gap_",
+    #     ]
+    # )
 
     print_builder(builder)
 
-    # result = engine.submit(builder)
+    if run:
+        submit_and_add_group(builder, group)
 
-    # print(f"Submitted {result}")
+
+@click.command()
+@cmdline.utils.decorators.with_dbenv()
+@cmdline.params.options.GROUP(
+    help="The group to add the submitted workchain.",
+)
+@RUN()
+def cli(group, run):
+    """Run a ``YamboWorkflow``."""
+    submit(group, run)
 
 
 if __name__ == "__main__":
-    main()
+    cli()  # pylint: disable=no-value-for-parameter
