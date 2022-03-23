@@ -37,6 +37,7 @@ def submit(group: orm.Group = None, run: bool = False):
     nnkp = w90_wkchain.outputs.wannier90_pp.nnkp_file
 
     builder["ypp"]["nnkp_file"] = nnkp
+    builder["ypp"]["QP_DB"] = yambo_wkchain.outputs.QP_db
 
     print_builder(builder)
 
