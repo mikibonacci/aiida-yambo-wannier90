@@ -3,7 +3,7 @@ from click.testing import CliRunner
 
 from aiida.plugins import DataFactory
 
-from aiida_yambo_wannier90.cli import export, list_
+from aiida_yambo_wannier90.cli.data import export, list_
 
 
 # pylint: disable=attribute-defined-outside-init
