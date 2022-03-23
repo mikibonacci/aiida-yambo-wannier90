@@ -113,6 +113,23 @@ def submit(group: orm.Group = None, run: bool = False):
         ]
     )
 
+    builder.parameters_space = orm.List(
+        list=[
+            {
+                "var": ["BndsRnXp", "GbndRnge", "NGsBlkXp"],
+                "start": [100, 100, 2],
+                "stop": [600, 600, 12],
+                "delta": [100, 100, 2],
+                "max": [1600, 1600, 36],
+                "steps": 6,
+                "max_iterations": 8,
+                "conv_thr": 0.1,
+                "conv_thr_units": "eV",
+                "convergence_algorithm": "new_algorithm_2D",
+            },
+        ]
+    )
+
     print_builder(builder)
 
     if run:
