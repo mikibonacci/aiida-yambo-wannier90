@@ -35,7 +35,8 @@ def submit(group: orm.Group = None, run: bool = False):
     w90_wkchain = orm.load_node(140073)  # Si
     parent_folder = w90_wkchain.outputs.wannier90.remote_folder
     nnkp = w90_wkchain.outputs.wannier90_pp.nnkp_file
-    unsorted_eig = orm.SinglefileData(file=INPUT_DIR / "aiida.gw.unsorted.eig")
+    ypp_wkchain = orm.load_node(4048)
+    unsorted_eig = ypp_wkchain.outputs.unsorted_eig_file
 
     builder = Gw2wannier90Calculation.get_builder()
 
