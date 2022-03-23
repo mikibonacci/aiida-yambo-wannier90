@@ -46,6 +46,9 @@ docs = [
 # [project.entry-points."aiida.data"]
 # "yambo_wannier90" = "aiida_yambo_wannier90.data:DiffParameters"
 
+[project.scripts]
+"aiida-yambo-wannier90" = "aiida_yambo_wannier90.cli:cmd_root"
+
 [project.entry-points."aiida.calculations"]
 "yambo_wannier90.gw2wannier90" = "aiida_yambo_wannier90.calculations.gw2wannier90:Gw2wannier90Calculation"
 
