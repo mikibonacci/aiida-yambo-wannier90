@@ -80,6 +80,7 @@ disable = [
     "too-many-ancestors",
     "invalid-name",
     "duplicate-code",
+    "import-outside-toplevel",
     # black compatibility
     "C0330",
     "C0326",
@@ -87,6 +88,10 @@ disable = [
 
 [tool.pytest.ini_options]
 # Configuration for [pytest](https://docs.pytest.org)
+minversion = '6.0'
+testpaths = [
+    'tests',
+]
 python_files = "test_*.py example_*.py"
 filterwarnings = [
     "ignore::DeprecationWarning:aiida:",
