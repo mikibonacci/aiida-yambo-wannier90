@@ -4,14 +4,10 @@ import pytest
 
 from aiida.engine import ProcessBuilder
 
-# from aiida.plugins import WorkflowFactory
-
 
 def test_get_available_protocols():
     """Test ``YamboWannier90WorkChain.get_available_protocols``."""
     from aiida_yambo_wannier90.workflows import YamboWannier90WorkChain
-
-    # YamboWannier90WorkChain = WorkflowFactory('yambo_wannier90')
 
     protocols = YamboWannier90WorkChain.get_available_protocols()
     assert sorted(protocols.keys()) == ["fast", "moderate", "precise"]
@@ -37,20 +33,3 @@ def test_default_protocol(
 
     assert isinstance(builder, ProcessBuilder)
     data_regression.check(serialize_builder(builder))
-
-
-def test_list():
-    """Test pseudo."""
-    from aiida_pseudo.groups.family import (
-        CutoffsPseudoPotentialFamily,
-        PseudoDojoFamily,
-        SsspFamily,
-    )
-
-    from aiida import orm
-
-    pseudo_set = (PseudoDojoFamily, SsspFamily, CutoffsPseudoPotentialFamily)
-    pseudo_family1 = orm.QueryBuilder().append(pseudo_set)
-    allfam = pseudo_family1.all()
-    raise ValueError(f"{allfam}")
-    # raise ValueError(f"{allfam} {allfam[0][0]}")

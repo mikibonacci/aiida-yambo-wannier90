@@ -9,6 +9,11 @@ import pytest
 pytest_plugins = ["aiida.manage.tests.pytest_fixtures"]  # pylint: disable=invalid-name
 
 
+# @pytest.fixture(scope="function", autouse=True)
+# def clear_database_auto(clear_database):  # pylint: disable=unused-argument
+#     """Automatically clear database in between tests."""
+
+
 @pytest.fixture(scope="session")
 def filepath_tests():
     """Return the absolute filepath of the `tests` folder.
@@ -41,6 +46,12 @@ def fixture_localhost(aiida_localhost):
     localhost = aiida_localhost
     localhost.set_default_mpiprocs_per_machine(1)
     return localhost
+
+
+# @pytest.fixture(scope="function")
+# def yambo_wannier90_code(aiida_local_code_factory):
+#     """Get a yambo_wannier90 code."""
+#     return aiida_local_code_factory(executable="diff", entry_point="yambo_wannier90")
 
 
 @pytest.fixture
