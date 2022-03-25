@@ -1,0 +1,405 @@
+clean_workdir: false
+gw2wannier90:
+  code: test.yambo_wannier90.gw2wannier90@localhost-test
+structure: BaO3Ti
+wannier90:
+  nscf:
+    kpoints: 512 kpts
+    kpoints_force_parity: false
+    pw:
+      code: test.quantumespresso.pw@localhost-test
+      metadata:
+        options:
+          max_wallclock_seconds: 43200
+          resources:
+            num_machines: 1
+          withmpi: true
+      parameters:
+        CONTROL:
+          calculation: nscf
+          etot_conv_thr: 5.0e-05
+          forc_conv_thr: 0.0001
+          restart_mode: from_scratch
+          tprnfor: true
+          tstress: true
+        ELECTRONS:
+          conv_thr: 1.0e-09
+          diago_full_acc: true
+          electron_maxstep: 80
+          mixing_beta: 0.4
+          startingpot: file
+        SYSTEM:
+          degauss: 0.01
+          ecutrho: 240.0
+          ecutwfc: 30.0
+          nbnd: 54
+          noinv: true
+          nosym: true
+          occupations: smearing
+          smearing: cold
+      pseudos:
+        Ba: Ba.pbe-spn-kjpaw_psl.1.0.0.UPF
+        O: O.pbe-n-kjpaw_psl.0.1.UPF
+        Ti: ti_pbe_v1.4.uspp.F.UPF
+  projwfc:
+    projwfc:
+      code: test.quantumespresso.projwfc@localhost-test
+      metadata:
+        options:
+          max_wallclock_seconds: 43200
+          resources:
+            num_machines: 1
+            num_mpiprocs_per_machine: 1
+          withmpi: true
+      parameters:
+        PROJWFC:
+          DeltaE: 0.2
+  pw2wannier90:
+    pw2wannier90:
+      code: test.quantumespresso.pw2wannier90@localhost-test
+      metadata:
+        options:
+          max_wallclock_seconds: 43200
+          resources:
+            num_machines: 1
+            num_mpiprocs_per_machine: 1
+          withmpi: true
+      parameters:
+        inputpp:
+          scdm_entanglement: erfc
+          scdm_proj: true
+  scf:
+    kpoints_distance: 0.2
+    kpoints_force_parity: false
+    pw:
+      code: test.quantumespresso.pw@localhost-test
+      metadata:
+        options:
+          max_wallclock_seconds: 43200
+          resources:
+            num_machines: 1
+          withmpi: true
+      parameters:
+        CONTROL:
+          calculation: scf
+          etot_conv_thr: 5.0e-05
+          forc_conv_thr: 0.0001
+          tprnfor: true
+          tstress: true
+        ELECTRONS:
+          conv_thr: 1.0e-09
+          electron_maxstep: 80
+          mixing_beta: 0.4
+        SYSTEM:
+          degauss: 0.01
+          ecutrho: 240.0
+          ecutwfc: 30.0
+          nosym: false
+          occupations: smearing
+          smearing: cold
+      pseudos:
+        Ba: Ba.pbe-spn-kjpaw_psl.1.0.0.UPF
+        O: O.pbe-n-kjpaw_psl.0.1.UPF
+        Ti: ti_pbe_v1.4.uspp.F.UPF
+  wannier90:
+    auto_energy_windows: false
+    auto_energy_windows_threshold: 0.9
+    shift_energy_windows: false
+    wannier90:
+      code: test.wannier90.wannier90@localhost-test
+      kpoints: 512 kpts
+      metadata:
+        options:
+          max_wallclock_seconds: 43200
+          resources:
+            num_machines: 1
+          withmpi: true
+      parameters:
+        auto_projections: true
+        bands_plot: true
+        conv_tol: 5.0e-07
+        conv_window: 3
+        dis_conv_tol: 5.0e-07
+        dis_num_iter: 0
+        mp_grid:
+        - 8
+        - 8
+        - 8
+        num_bands: 54
+        num_cg_steps: 200
+        num_iter: 4000
+        num_wann: 27
+      settings: {}
+wannier90_qp:
+  auto_energy_windows: false
+  auto_energy_windows_threshold: 0.9
+  shift_energy_windows: true
+  wannier90:
+    code: test.wannier90.wannier90@localhost-test
+    kpoints: 512 kpts
+    metadata:
+      options:
+        max_wallclock_seconds: 43200
+        resources:
+          num_machines: 1
+        withmpi: true
+    parameters:
+      auto_projections: true
+      conv_tol: 5.0e-07
+      conv_window: 3
+      dis_conv_tol: 5.0e-07
+      dis_froz_max: 2.0
+      dis_num_iter: 4000
+      dis_proj_max: 0.95
+      dis_proj_min: 0.01
+      mp_grid:
+      - 8
+      - 8
+      - 8
+      num_bands: 54
+      num_cg_steps: 200
+      num_iter: 4000
+      num_wann: 27
+    settings: {}
+yambo:
+  parameters_space:
+  - conv_thr: 5
+    conv_thr_units: '%'
+    convergence_algorithm: new_algorithm_1D
+    delta:
+    - 2
+    - 2
+    - 2
+    max:
+    - 16
+    - 16
+    - 16
+    max_iterations: 4
+    start:
+    - 4
+    - 4
+    - 4
+    steps: 4
+    stop:
+    - 12
+    - 12
+    - 12
+    var:
+    - kpoint_mesh
+  - conv_thr: 5
+    conv_thr_units: '%'
+    convergence_algorithm: new_algorithm_2D
+    delta:
+    - 200
+    - 200
+    - 2
+    max:
+    - 2000
+    - 2000
+    - 40
+    max_iterations: 8
+    start:
+    - 200
+    - 200
+    - 8
+    steps: 6
+    stop:
+    - 800
+    - 800
+    - 18
+    var:
+    - BndsRnXp
+    - GbndRnge
+    - NGsBlkXp
+  workflow_settings:
+    bands_nscf_update: all-at-once
+    skip_pre: false
+    type: 1D_convergence
+    what:
+    - gap_GG
+  ywfl:
+    nscf:
+      clean_workdir: false
+      kpoints: '[4, 4, 4] mesh + [0.0, 0.0, 0.0] offset'
+      kpoints_distance: 0.15
+      kpoints_force_parity: false
+      pw:
+        code: test.quantumespresso.pw@localhost-test
+        metadata:
+          options:
+            max_wallclock_seconds: 43200
+            resources:
+              num_machines: 1
+            withmpi: true
+        parameters:
+          CONTROL:
+            calculation: nscf
+            etot_conv_thr: 5.0e-05
+            forc_conv_thr: 0.0001
+            tprnfor: true
+            tstress: true
+          ELECTRONS:
+            conv_thr: 1.0e-09
+            electron_maxstep: 80
+            mixing_beta: 0.4
+          SYSTEM:
+            ecutrho: 240.0
+            ecutwfc: 30.0
+            force_symmorphic: true
+            nbnd: 1000
+            nosym: false
+            occupations: fixed
+        pseudos:
+          Ba: Ba.pbe-spn-kjpaw_psl.1.0.0.UPF
+          O: O.pbe-n-kjpaw_psl.0.1.UPF
+          Ti: ti_pbe_v1.4.uspp.F.UPF
+    scf:
+      clean_workdir: false
+      kpoints_distance: 0.15
+      kpoints_force_parity: false
+      pw:
+        code: test.quantumespresso.pw@localhost-test
+        metadata:
+          options:
+            max_wallclock_seconds: 43200
+            resources:
+              num_machines: 1
+            withmpi: true
+        parameters:
+          CONTROL:
+            calculation: scf
+            etot_conv_thr: 5.0e-05
+            forc_conv_thr: 0.0001
+            tprnfor: true
+            tstress: true
+          ELECTRONS:
+            conv_thr: 1.0e-09
+            electron_maxstep: 80
+            mixing_beta: 0.4
+          SYSTEM:
+            ecutrho: 240.0
+            ecutwfc: 30.0
+            force_symmorphic: true
+            nosym: false
+            occupations: fixed
+        pseudos:
+          Ba: Ba.pbe-spn-kjpaw_psl.1.0.0.UPF
+          O: O.pbe-n-kjpaw_psl.0.1.UPF
+          Ti: ti_pbe_v1.4.uspp.F.UPF
+    yres:
+      clean_workdir: false
+      yambo:
+        code: test.yambo.yambo@localhost-test
+        metadata:
+          options:
+            max_wallclock_seconds: 43200
+            resources:
+              num_cores_per_mpiproc: 1
+              num_machines: 1
+              num_mpiprocs_per_machine: 16
+            withmpi: true
+        parameters:
+          arguments:
+          - dipoles
+          - ppa
+          - HF_and_locXC
+          - gw0
+          - NLCC
+          - rim_cut
+          variables:
+            BndsRnXp:
+            - - 1
+              - 200
+            - ''
+            Chimod: hartree
+            DysSolver: n
+            GTermKind: BG
+            GbndRnge:
+            - - 1
+              - 200
+            - ''
+            NGsBlkXp:
+            - 8
+            - Ry
+            PAR_def_mode: balanced
+            QPkrange:
+            - - - 1
+                - 1
+                - 32
+                - 32
+            - ''
+            RandGvec:
+            - 100
+            - RL
+            RandQpts:
+            - 5000000
+            - ''
+        preprocessing_code: test.yambo.p2y@localhost-test
+yambo_qp:
+  yambo:
+    code: test.yambo.yambo@localhost-test
+    metadata:
+      options:
+        max_wallclock_seconds: 43200
+        resources:
+          num_cores_per_mpiproc: 1
+          num_machines: 1
+          num_mpiprocs_per_machine: 16
+        withmpi: true
+    parameters:
+      arguments:
+      - dipoles
+      - ppa
+      - HF_and_locXC
+      - gw0
+      - NLCC
+      - rim_cut
+      variables:
+        BndsRnXp:
+        - - 1
+          - 0
+        - ''
+        Chimod: hartree
+        DysSolver: n
+        GTermKind: BG
+        GbndRnge:
+        - - 1
+          - 0
+        - ''
+        NGsBlkXp:
+        - 1
+        - Ry
+        PAR_def_mode: balanced
+        QPkrange:
+        - - - 1
+            - 1
+            - 32
+            - 32
+        - ''
+        RandGvec:
+        - 100
+        - RL
+        RandQpts:
+        - 5000000
+        - ''
+    preprocessing_code: test.yambo.p2y@localhost-test
+ypp:
+  ypp:
+    code: test.yambo.ypp@localhost-test
+    metadata:
+      options:
+        max_wallclock_seconds: 1800
+        prepend_text: mv ./SAVE/ndb.QP* .
+        resources:
+          num_cores_per_mpiproc: 1
+          num_machines: 1
+          num_mpiprocs_per_machine: 1
+        withmpi: true
+    parameters:
+      arguments:
+      - wannier
+      variables:
+        BoseTemp:
+        - 0
+        - eV
+        WriteAMU: ''
