@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Run a ``YamboWannier90WorkChain``.
+"""Run a ``YamboWannier90WorkChain``, restart from ``unsorted.eig``.
 
 Usage: ./example_06.py
 """
