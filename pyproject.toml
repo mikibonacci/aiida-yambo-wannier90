@@ -32,7 +32,8 @@ testing = [
     "wheel~=0.31",
     "coverage[toml]",
     "pytest~=6.0",
-    "pytest-cov"
+    "pytest-cov",
+    "pytest-regressions",
 ]
 pre-commit = ["pre-commit~=2.17", "pylint>=2.5.0,<2.9"]
 docs = [
@@ -54,6 +55,9 @@ docs = [
 
 [project.entry-points."aiida.parsers"]
 "yambo_wannier90.gw2wannier90" = "aiida_yambo_wannier90.parsers.gw2wannier90:Gw2wannier90Parser"
+
+[project.entry-points."aiida.workflows"]
+"yambo_wannier90" = "aiida_yambo_wannier90.workflows:YamboWannier90WorkChain"
 
 # [project.entry-points."aiida.cmdline.data"]
 # "yambo_wannier90" = "aiida_yambo_wannier90.cli:data_cli"
