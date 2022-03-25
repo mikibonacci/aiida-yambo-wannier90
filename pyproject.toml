@@ -64,6 +64,13 @@ name = "aiida_yambo_wannier90"
 [tool.pylint.format]
 max-line-length = 125
 
+[tool.pylint.tool-check]
+generated-members = [
+    "self.exit_codes.*,",
+    "Wannier90Calculation.exit_codes.*",
+    "YamboWannier90WorkChain.exit_codes.*",
+]
+
 [tool.pylint.messages_control]
 disable = [
     "too-many-ancestors",
