@@ -51,7 +51,7 @@ __all__ = ["validate_inputs", "YamboWannier90WorkChain"]
 # TODO remove this todo disable
 
 
-def validate_inputs(  # pylint: disable=inconsistent-return-statements,too-many-return-statements,too-many-branches
+def validate_inputs(  # pylint: disable=inconsistent-return-statements,too-many-return-statements,too-many-branches,too-many-locals
     inputs: dict, ctx=None  # pylint: disable=unused-argument
 ) -> ty.Union[None, str]:
     """Validate the inputs of the entire input namespace."""
@@ -68,11 +68,19 @@ def validate_inputs(  # pylint: disable=inconsistent-return-statements,too-many-
         )
 
     # Check inputs if previous steps are skipped
+    should_run_yambo = "yambo" in inputs
     should_run_wannier90 = "wannier90" in inputs
     should_run_yambo_qp = "yambo_qp" in inputs
     should_run_ypp = "ypp" in inputs
     should_run_gw2wannier90 = "gw2wannier90" in inputs
     should_run_wannier90_qp = "wannier90_qp" in inputs
+
+    if should_run_yambo_qp:
+        yambo_qp_inputs = inputs["yambo_qp"]
+
+        if not should_run_yambo:
+            if "parent_folder" not in yambo_qp_inputs:
+                return "`yambo_qp.parent_folder` is empty."
 
     if should_run_ypp:
         ypp_inputs = inputs["ypp"]
@@ -178,7 +186,7 @@ class YamboWannier90WorkChain(
             },
         )
         spec.expose_inputs(
-            YamboWorkflow,
+            YamboRestart,
             namespace="yambo_qp",
             exclude=(
                 "clean_workdir",
@@ -395,9 +403,10 @@ class YamboWannier90WorkChain(
         protocol: str = None,
         overrides: dict = None,
         pseudo_family: str = "PseudoDojo/0.4/PBE/SR/standard/upf",
-        NLCC=True,
-        RIM_v=True,
-        RIM_W=False,
+        exclude_semicore: bool = False,
+        NLCC: bool = True,
+        RIM_v: bool = True,
+        RIM_W: bool = False,
     ) -> ProcessBuilder:
         """Return a builder prepopulated with inputs selected according to the chosen protocol.
 
@@ -412,7 +421,8 @@ class YamboWannier90WorkChain(
         :return: [description]
         :rtype: aiida.engine.ProcessBuilder
         """
-        # pylint: disable=import-outside-toplevel
+        # pylint: disable=import-outside-toplevel,protected-access
+        # from aiida_quantumespresso.workflows.protocols.utils import recursive_merge
         from aiida_wannier90_workflows.utils.workflows.builder import (
             recursive_merge_builder,
         )
@@ -437,64 +447,65 @@ class YamboWannier90WorkChain(
 
         inputs = cls.get_protocol_inputs(protocol, overrides)
 
-        builder = cls.get_builder()
-        builder = recursive_merge_builder(builder, inputs)
-
-        builder.structure = structure
+        inputs["structure"] = structure
 
         # Prepare yambo
+        yambo_overrides = {
+            "ywfl": {
+                "scf": {"pseudo_family": pseudo_family},
+                "nscf": {"pseudo_family": pseudo_family},
+            },
+        }
         yambo_builder = YamboConvergence.get_builder_from_protocol(
             pw_code=codes["pw"],
             preprocessing_code=codes["p2y"],
             code=codes["yambo"],
             protocol="moderate",
             structure=structure,
-            pseudo_family=pseudo_family,
+            overrides=yambo_overrides,
             NLCC=NLCC,
             RIM_v=RIM_v,
             RIM_W=RIM_W,
         )
-        inputs["yambo"] = yambo_builder._inputs(  # pylint: disable=protected-access
-            prune=True
-        )
+        inputs["yambo"] = yambo_builder._inputs(prune=True)
+        inputs["yambo"]["ywfl"]["scf"]["pw"].pop("structure", None)
+        inputs["yambo"]["ywfl"]["nscf"]["pw"].pop("structure", None)
+        inputs["yambo"].pop("clean_workdir", None)
 
         # Prepare wannier
         wannier_builder = Wannier90BandsWorkChain.get_builder_from_protocol(
             codes,
             structure,
             pseudo_family=pseudo_family,
-            exclude_semicore=False,
+            exclude_semicore=exclude_semicore,
         )
-        inputs[
-            "wannier90"
-        ] = wannier_builder._inputs(  # pylint: disable=protected-access
-            prune=True
-        )
+        inputs["wannier90"] = wannier_builder._inputs(prune=True)
         inputs["wannier90"].pop("structure", None)
         inputs["wannier90"].pop("clean_workdir", None)
 
         # Prepare yambo_qp
-        # yambo_qp_builder = YamboWorkflow.get_builder_from_protocol(
-        #     pw_code=codes['pw'],
-        #     preprocessing_code=codes['p2y'],
-        #     code=codes['yambo'],
-        # )
-        # inputs["yambo_qp"] = yambo_qp_builder._inputs(prune=True)
-        # inputs["yambo_qp"].pop("clean_workdir", None)
+        yambo_qp_builder = YamboRestart.get_builder_from_protocol(
+            pw_code=codes["pw"],
+            preprocessing_code=codes["p2y"],
+            code=codes["yambo"],
+            protocol="moderate",
+            NLCC=NLCC,
+            RIM_v=RIM_v,
+            RIM_W=RIM_W,
+        )
+        inputs["yambo_qp"] = yambo_qp_builder._inputs(prune=True)
+        inputs["yambo_qp"].pop("clean_workdir", None)
 
         # Ypp; without a parent_folder for now. We should set it during the input preparation
         ypp_builder = YppRestart.get_builder_from_protocol(
             code=codes["ypp"],
             protocol="Wannier",
         )
-
         # ypp_builder.ypp.QP_calculations = List(
         #    list=[1948, 1980, 2006, 2064, 2151, 2176, 2215, 2253]
         # )
         # ypp_builder.QP_DB = load_node(2329)
-        inputs["ypp"] = ypp_builder._inputs(  # pylint: disable=protected-access
-            prune=True
-        )
+        inputs["ypp"] = ypp_builder._inputs(prune=True)
         inputs["ypp"].pop("clean_workdir", None)
 
         # Prepare gw2wannier90
@@ -503,14 +514,23 @@ class YamboWannier90WorkChain(
         }
 
         # Prepare wannier90_qp
-        # wannier90_qp_builder = Wannier90BaseWorkChain.get_builder_from_protocol(
-        #     codes=codes['wannier90'],
-        #     structure=structure,
-        # )
-        # inputs["wannier90_qp"] = wannier90_qp_builder._inputs(prune=True)
-        # inputs["wannier90_qp"].pop("structure", None)
-        # inputs["wannier90_qp"].pop("clean_workdir", None)
+        wannier90_qp_builder = Wannier90BaseWorkChain.get_builder_from_protocol(
+            code=codes["wannier90"],
+            structure=structure,
+            pseudo_family=pseudo_family,
+            overrides={
+                "meta_parameters": {
+                    "exclude_semicore": exclude_semicore,
+                }
+            },
+        )
+        inputs["wannier90_qp"] = wannier90_qp_builder._inputs(prune=True)
+        inputs["wannier90_qp"]["wannier90"].pop("structure", None)
+        inputs["wannier90_qp"].pop("clean_workdir", None)
 
+        # from pprint import pprint
+        # pprint(inputs)
+        builder = cls.get_builder()
         builder = recursive_merge_builder(builder, inputs)
 
         return builder
