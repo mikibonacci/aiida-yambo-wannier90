@@ -2,6 +2,13 @@
 """Run a ``YamboWannier90WorkChain``.
 
 Usage: ./example_08.py
+
+To compare bands between QE, W90, W90 with QP, run in terminal
+```
+aiida-yambo-wannier90 plot bands PW_PK GWW90_PK
+```
+Where `PW_PK` is the PK of a `PwBandsWorkChain/PwBaseWorkChain` for PW bands calculation,
+`GWW90_PK` is the PK of a `YamboWannier90WorkChain`.
 """
 import click
 
@@ -76,7 +83,11 @@ def submit(group: orm.Group = None, run: bool = False):
         npool=8,
         num_machines=1,
     )
-    set_parallelization(builder["wannier90"], parallelization=parallelization)
+    set_parallelization(
+        builder["wannier90"],
+        parallelization=parallelization,
+        process_class=Wannier90BandsWorkChain,
+    )
 
     print_builder(builder)
 

@@ -2,6 +2,13 @@
 """Run a full ``YamboWannier90WorkChain``.
 
 Usage: ./example_09.py
+
+To compare bands between QE, W90, W90 with QP, run in terminal
+```
+aiida-yambo-wannier90 plot bands PW_PK GWW90_PK
+```
+Where `PW_PK` is the PK of a `PwBandsWorkChain/PwBaseWorkChain` for PW bands calculation,
+`GWW90_PK` is the PK of a `YamboWannier90WorkChain`.
 """
 import click
 
@@ -21,6 +28,13 @@ def submit(group: orm.Group = None, run: bool = False):
     Run all the steps.
     """
     # pylint: disable=import-outside-toplevel
+    from aiida_quantumespresso.workflows.pw.base import PwBaseWorkChain
+
+    from aiida_wannier90_workflows.workflows.bands import Wannier90BandsWorkChain
+    from aiida_wannier90_workflows.workflows.base.wannier90 import (
+        Wannier90BaseWorkChain,
+    )
+
     from aiida_yambo_wannier90.workflows import YamboWannier90WorkChain
 
     codes = {
@@ -43,13 +57,40 @@ def submit(group: orm.Group = None, run: bool = False):
         structure=structure,
     )
 
+    # Increase ecutwfc
+    params = builder.yambo.ywfl.scf.pw.parameters.get_dict()
+    params["SYSTEM"]["ecutwfc"] = 80
+    builder.yambo.ywfl.scf.pw.parameters = orm.Dict(dict=params)
+    params = builder.yambo.ywfl.nscf.pw.parameters.get_dict()
+    params["SYSTEM"]["ecutwfc"] = 80
+    builder.yambo.ywfl.nscf.pw.parameters = orm.Dict(dict=params)
+
     parallelization = dict(
-        max_wallclock_seconds=5 * 3600,
-        num_mpiprocs_per_machine=48,
+        max_wallclock_seconds=24 * 3600,
+        # num_mpiprocs_per_machine=48,
         npool=8,
         num_machines=1,
     )
-    set_parallelization(builder["wannier90"], parallelization=parallelization)
+    set_parallelization(
+        builder["yambo"]["ywfl"]["scf"],
+        parallelization=parallelization,
+        process_class=PwBaseWorkChain,
+    )
+    set_parallelization(
+        builder["yambo"]["ywfl"]["nscf"],
+        parallelization=parallelization,
+        process_class=PwBaseWorkChain,
+    )
+    set_parallelization(
+        builder["wannier90"],
+        parallelization=parallelization,
+        process_class=Wannier90BandsWorkChain,
+    )
+    set_parallelization(
+        builder["wannier90_qp"],
+        parallelization=parallelization,
+        process_class=Wannier90BaseWorkChain,
+    )
 
     print_builder(builder)
 
