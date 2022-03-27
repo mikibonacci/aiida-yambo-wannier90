@@ -10,6 +10,7 @@ from aiida import cmdline, orm
 from aiida_wannier90_workflows.cli.params import RUN
 from aiida_wannier90_workflows.utils.workflows.builder import (
     print_builder,
+    set_parallelization,
     submit_and_add_group,
 )
 
@@ -41,6 +42,14 @@ def submit(group: orm.Group = None, run: bool = False):
         codes=codes,
         structure=structure,
     )
+
+    parallelization = dict(
+        max_wallclock_seconds=5 * 3600,
+        num_mpiprocs_per_machine=48,
+        npool=8,
+        num_machines=1,
+    )
+    set_parallelization(builder["wannier90"], parallelization=parallelization)
 
     print_builder(builder)
 

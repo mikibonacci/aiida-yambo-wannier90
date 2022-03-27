@@ -16,11 +16,16 @@ from aiida_quantumespresso.calculations.functions.seekpath_structure_analysis im
 from aiida_quantumespresso.utils.mapping import prepare_process_inputs
 from aiida_quantumespresso.workflows.protocols.utils import ProtocolMixin
 
+from aiida_wannier90_workflows.common.types import (
+    WannierDisentanglementType,
+    WannierFrozenType,
+    WannierProjectionType,
+)
 from aiida_wannier90_workflows.utils.kpoints import (
-    create_kpoints_from_mesh,
-    get_explicit_kpoints_from_mesh,
+    get_explicit_kpoints,
     get_mesh_from_kpoints,
 )
+from aiida_wannier90_workflows.utils.workflows.builder import set_kpoints
 from aiida_wannier90_workflows.workflows import (
     Wannier90BandsWorkChain,
     Wannier90BaseWorkChain,
@@ -35,6 +40,7 @@ from aiida_yambo.workflows.ypprestart import YppRestart
 from aiida_yambo_wannier90.calculations.functions.kmesh import (
     find_commensurate_meshes,
     get_output_explicit_kpoints,
+    is_commensurate,
     kmapper,
 )
 from aiida_yambo_wannier90.calculations.gw2wannier90 import Gw2wannier90Calculation
@@ -121,6 +127,9 @@ class YamboWannier90WorkChain(
     @classmethod
     def define(cls, spec):
         """Define the process spec."""
+        from aiida_wannier90_workflows.workflows.base.wannier90 import (
+            validate_inputs_base as validate_inputs_base_wannier90,
+        )
 
         super().define(spec)
 
@@ -239,6 +248,7 @@ class YamboWannier90WorkChain(
                 "required": True,
             },
         )
+        spec.inputs["wannier90_qp"].validator = validate_inputs_base_wannier90
 
         spec.inputs.validator = validate_inputs
 
@@ -473,27 +483,35 @@ class YamboWannier90WorkChain(
         inputs["yambo"].pop("clean_workdir", None)
 
         # Prepare wannier
-        wannier_builder = Wannier90BandsWorkChain.get_builder_from_protocol(
+        projection_type = WannierProjectionType.ATOMIC_PROJECTORS_QE
+        disentanglement_type = WannierDisentanglementType.SMV
+        frozen_type = WannierFrozenType.FIXED_PLUS_PROJECTABILITY
+        wannier_builder = Wannier90OptimizeWorkChain.get_builder_from_protocol(
             codes,
             structure,
             pseudo_family=pseudo_family,
             exclude_semicore=exclude_semicore,
+            projection_type=projection_type,
+            disentanglement_type=disentanglement_type,
+            frozen_type=frozen_type,
         )
+        wannier_builder.optimize_disproj = False
         inputs["wannier90"] = wannier_builder._inputs(prune=True)
         inputs["wannier90"].pop("structure", None)
         inputs["wannier90"].pop("clean_workdir", None)
 
-        # Prepare yambo_qp
-        yambo_qp_builder = YamboRestart.get_builder_from_protocol(
-            pw_code=codes["pw"],
-            preprocessing_code=codes["p2y"],
-            code=codes["yambo"],
-            protocol="moderate",
-            NLCC=NLCC,
-            RIM_v=RIM_v,
-            RIM_W=RIM_W,
-        )
-        inputs["yambo_qp"] = yambo_qp_builder._inputs(prune=True)
+        # TODO Prepare yambo_qp
+        # yambo_qp_builder = YamboRestart.get_builder_from_protocol(
+        #     pw_code=codes["pw"],
+        #     preprocessing_code=codes["p2y"],
+        #     code=codes["yambo"],
+        #     protocol="moderate",
+        #     NLCC=NLCC,
+        #     RIM_v=RIM_v,
+        #     RIM_W=RIM_W,
+        # )
+        # inputs["yambo_qp"] = yambo_qp_builder._inputs(prune=True)
+        inputs["yambo_qp"] = inputs["yambo"]["ywfl"]["yres"]
         inputs["yambo_qp"].pop("clean_workdir", None)
 
         # Ypp; without a parent_folder for now. We should set it during the input preparation
@@ -524,18 +542,19 @@ class YamboWannier90WorkChain(
                 }
             },
         )
+        params = wannier90_qp_builder.wannier90.parameters.get_dict()
+        params["bands_plot"] = True
+        wannier90_qp_builder.wannier90.parameters = orm.Dict(dict=params)
         inputs["wannier90_qp"] = wannier90_qp_builder._inputs(prune=True)
         inputs["wannier90_qp"]["wannier90"].pop("structure", None)
         inputs["wannier90_qp"].pop("clean_workdir", None)
 
-        # from pprint import pprint
-        # pprint(inputs)
         builder = cls.get_builder()
         builder = recursive_merge_builder(builder, inputs)
 
         return builder
 
-    def setup(self) -> None:
+    def setup(self) -> None:  # pylint: disable=inconsistent-return-statements
         """Initialize context variables."""
 
         self.ctx.current_structure = self.inputs.structure
@@ -560,7 +579,18 @@ class YamboWannier90WorkChain(
         # Input Wannier90 mesh
         self.ctx.kpoints_w90_input = None
         if self.should_run_wannier90():
-            self.ctx.kpoints_w90_input = self.inputs.wannier90.nscf.pw.kpoints
+            self.ctx.kpoints_w90_input = self.inputs.wannier90.nscf.kpoints
+
+            if not self.should_run_yambo_convergence():
+                kmesh_gw_conv = get_mesh_from_kpoints(self.ctx.kpoints_gw_conv)
+                kmesh_w90_input = get_mesh_from_kpoints(self.ctx.kpoints_w90_input)
+
+                if not is_commensurate(kmesh_gw_conv, kmesh_w90_input):
+                    self.report(
+                        f"Skipping GW convergence, but GW converged mesh {kmesh_gw_conv} "
+                        f"is not commensurate with W90 input mesh {kmesh_w90_input}"
+                    )
+                    return self.exit_codes.ERROR_SUB_PROCESS_FAILED_SETUP
 
         # Commensurate meshes for GW and W90
         # I always use commensurate mesh in W90 step
@@ -649,35 +679,35 @@ class YamboWannier90WorkChain(
         kpoints_gw_conv = self.ctx.kpoints_gw_conv
         kpoints_w90_input = self.ctx.kpoints_w90_input
 
-        result = find_commensurate_meshes(
+        result = find_commensurate_meshes(  # pylint: disable=unexpected-keyword-arg
             dense_mesh=kpoints_gw_conv,
             coarse_mesh=kpoints_w90_input,
+            metadata={"call_link_label": "find_commensurate_meshes"},
         )
-        dense_mesh = result["dense_mesh"]
-        coarse_mesh = result["coarse_mesh"]
+        kpoints_dense = result["dense_mesh"]
+        kpoints_coarse = result["coarse_mesh"]
 
         kmesh_gw_conv = get_mesh_from_kpoints(kpoints_gw_conv)
         kmesh_w90_input = get_mesh_from_kpoints(kpoints_w90_input)
 
+        kmesh_dense = get_mesh_from_kpoints(kpoints_dense)
+        kmesh_coarse = get_mesh_from_kpoints(kpoints_coarse)
+
         self.report(
             f"Converged GW kmesh = {kmesh_gw_conv}, W90 input kmesh = {kmesh_w90_input}. "
-            f"Found commensurate meshes GW = {dense_mesh}, W90 = {coarse_mesh}."
+            f"Found commensurate meshes GW = {kmesh_dense}, W90 = {kmesh_coarse}."
         )
 
         # Use theses meshes before submitting the corresponding workflow
-        if np.allclose(coarse_mesh, kmesh_w90_input):
+        if np.allclose(kmesh_coarse, kmesh_w90_input):
             self.ctx.kpoints_w90 = kpoints_w90_input
         else:
-            self.ctx.kpoints_w90 = get_explicit_kpoints_from_mesh(
-                self.ctx.current_structure, coarse_mesh
-            )
+            self.ctx.kpoints_w90 = get_explicit_kpoints(kpoints_coarse)
 
-        if np.allclose(dense_mesh, kmesh_gw_conv):
+        if np.allclose(kmesh_dense, kmesh_gw_conv):
             self.ctx.kpoints_gw = kpoints_gw_conv
         else:
-            self.ctx.kpoints_gw = create_kpoints_from_mesh(
-                self.ctx.current_structure, dense_mesh
-            )
+            self.ctx.kpoints_gw = kpoints_dense
 
     def should_run_wannier90(self) -> bool:
         """Whether to run wannier."""
@@ -693,6 +723,7 @@ class YamboWannier90WorkChain(
         )
 
         inputs.structure = self.ctx.current_structure
+        inputs.bands_kpoints = self.ctx.current_bands_kpoints
 
         # Use commensurate kmesh
         if self.ctx.kpoints_w90_input != self.ctx.kpoints_w90:
@@ -743,9 +774,8 @@ class YamboWannier90WorkChain(
         """Prepare inputs for yambo commensurate."""
         # Get and reruse the converged input from YamboWorkflow
         converged_wkchain = get_yambo_converged_workchain(self.ctx.wkchain_yambo_conv)
-        inputs = converged_wkchain.inputs._construct_attribute_dict(  # pylint: disable=protected-access
-            True
-        )
+        # pylint: disable=protected-access
+        inputs = converged_wkchain.inputs._construct_attribute_dict(True)
 
         # Use commensurate mesh
         inputs.nscf.kpoints = self.ctx.kpoints_gw
@@ -804,19 +834,35 @@ class YamboWannier90WorkChain(
         if self.should_run_yambo_commensurate():
             parent_wkchain = self.ctx.wkchain_yambo_commensurate
         else:
-            parent_wkchain = get_yambo_converged_workchain(self.ctx.wkchain_yambo_conv)
+            if self.should_run_yambo_convergence():
+                parent_wkchain = get_yambo_converged_workchain(
+                    self.ctx.wkchain_yambo_conv
+                )
+            else:
+                # Assume the inputs.parent_folder is generated inside a YamboWorkflow
+                parent_folder = inputs.parent_folder
+                # The creator is a YamboCalculation, caller is a YamboRestart
+                parent_wkchain = parent_folder.creator.caller
+                # Assume its caller is a YamboWorkflow
+                parent_wkchain = parent_wkchain.caller
 
         # Reuse converged inputs? Better keep the user provided inputs
         # inputs = parent_wkchain.inputs._construct_attribute_dict(True)
 
         nscf_wkchain = get_yambo_nscf(parent_wkchain)
-        gw_kpoints = get_output_explicit_kpoints(nscf_wkchain.outputs.retrieved)
+        gw_kpoints = (
+            get_output_explicit_kpoints(  # pylint: disable=unexpected-keyword-arg
+                retrieved=nscf_wkchain.outputs.retrieved,
+                metadata={"call_link_label": "get_output_explicit_kpoints"},
+            )
+        )
 
-        qpkrange = kmapper(
+        qpkrange = kmapper(  # pylint: disable=unexpected-keyword-arg
             dense_mesh=gw_kpoints,
             coarse_mesh=self.ctx.kpoints_w90,
             start_band=orm.Int(start_band),
             end_band=orm.Int(end_band),
+            metadata={"call_link_label": "kmapper"},
         )
         qpkrange = qpkrange.get_list()
 
@@ -831,7 +877,7 @@ class YamboWannier90WorkChain(
         # Use converged output folder
         settings: dict = inputs.yambo.settings.get_dict()
         # TODO is this correct?
-        settings.update({"INITIALISE": False, "COPY_DBS": True})
+        settings.update({"INITIALISE": False, "COPY_SAVE": True, "COPY_DBS": True})
         inputs.yambo.settings = orm.Dict(dict=settings)
 
         return inputs
@@ -962,11 +1008,27 @@ class YamboWannier90WorkChain(
         inputs.wannier90.bands_kpoints = self.ctx.current_bands_kpoints
 
         if self.ctx.kpoints_w90_input != self.ctx.kpoints_w90:
-            inputs.wannier90.kpoints = self.ctx.kpoints_w90
+            set_kpoints(
+                inputs, self.ctx.kpoints_w90, process_class=Wannier90BaseWorkChain
+            )
 
-            mp_grid = get_mesh_from_kpoints(self.ctx.kpoints_w90)
-            params = inputs.wannier90.parameters.get_dict()
-            params["mp_grid"] = mp_grid
+        params = inputs.wannier90.parameters.get_dict()
+        params["bands_plot"] = True
+
+        if self.should_run_wannier90():
+            w90calc = self.ctx.wkchain_wannier90.outputs.wannier90.remote_folder.creator
+            w90calc_params = w90calc.inputs.parameters.get_dict()
+            fermi_energy = w90calc_params["fermi_energy"]
+            params["fermi_energy"] = fermi_energy
+
+            # TODO I should just restart w/o wannierisation
+            if inputs.shift_energy_windows:
+                keys = ("dis_froz_min", "dis_froz_max", "dis_win_min", "dis_win_max")
+                for key in keys:
+                    if key in w90calc_params:
+                        params[key] += w90calc_params[key]
+                inputs.shift_energy_windows = False
+
             inputs.wannier90.parameters = orm.Dict(dict=params)
 
         if self.should_run_gw2wannier90():

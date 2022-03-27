@@ -107,8 +107,8 @@ def find_commensurate_integers(  # pylint: disable=too-many-locals,import-outsid
     the input ``dense`` integer, but upon output ``coarse`` is always smaller or
     equal than ``dense``.
     :type coarse: int
-    :param debug_plot: dense = coarse is valid solution, otherwise dense always > coarse
-    :type debug_plot: bool
+    :param include_identical: dense = coarse is valid solution, otherwise dense always > coarse
+    :type include_identical: bool
     :param debug_plot: use matplotlib to plot all the solutions
     ```
     find_commensurate_integers(5, 2, debug_plot=True)
@@ -263,3 +263,47 @@ def find_commensurate_meshes(
     new_coarse_mesh.set_kpoints_mesh(mesh=new_coarse)
 
     return {"dense_mesh": new_dense_mesh, "coarse_mesh": new_coarse_mesh}
+
+
+def is_commensurate(
+    dense_mesh: ty.Union[orm.KpointsData, ty.Sequence],
+    coarse_mesh: ty.Union[orm.KpointsData, ty.Sequence],
+) -> bool:
+    """Test if meshes are commensurate.
+
+    :param dense_mesh: GW dense mesh
+    :type dense_mesh: ty.Union[orm.KpointsData, ty.Sequence]
+    :param coarse_mesh: W90 coarse mesh
+    :type coarse_mesh: ty.Union[orm.KpointsData, ty.Sequence]
+    :return: Is commensurate?
+    :rtype: bool
+    """
+    from aiida_wannier90_workflows.utils.kpoints import get_mesh_from_kpoints
+
+    if isinstance(dense_mesh, orm.KpointsData):
+        dense = get_mesh_from_kpoints(dense_mesh)
+    else:
+        dense = dense_mesh
+    if len(dense) > 3:
+        raise ValueError(f"length of {dense_mesh} > 3")
+
+    if isinstance(coarse_mesh, orm.KpointsData):
+        coarse = get_mesh_from_kpoints(coarse_mesh)
+    else:
+        coarse = coarse_mesh
+    if len(coarse) > 3:
+        raise ValueError(f"length of {coarse_mesh} > 3")
+
+    if len(dense) != len(coarse):
+        raise ValueError(f"length of {dense_mesh} != length of {coarse_mesh}")
+
+    div = [dense[_] // coarse[_] for _ in range(len(dense))]
+    mod = [dense[_] % coarse[_] for _ in range(len(dense))]
+
+    if any(_ < 1 for _ in div):
+        return False
+
+    if any(_ > 0 for _ in mod):
+        return False
+
+    return True

@@ -42,16 +42,19 @@ class Gw2wannier90Calculation(CalcJob):
         spec.input(
             "parent_folder",
             valid_type=orm.RemoteData,
+            required=False,
             help="Remote folder containing amn/mmn/eig/... files.",
         )
         spec.input(
             "unsorted_eig",
             valid_type=orm.SinglefileData,
+            required=False,
             help="The seedname.gw.unsorted.eig file.",
         )
         spec.input(
             "nnkp",
             valid_type=orm.SinglefileData,
+            required=False,
             help="The seedname.nnkp file.",
         )
         spec.output(
@@ -90,11 +93,11 @@ class Gw2wannier90Calculation(CalcJob):
         # The output amn/mmn/eig are in the current workdir, so the current
         # RemoteData can be directly used by `Wannier90Calculation`.
         w90_default_seedname = removesuffix(
-            Wannier90Calculation._DEFAULT_INPUT_FILE,
-            Wannier90Calculation._REQUIRED_INPUT_SUFFIX,
+            Wannier90Calculation._DEFAULT_INPUT_FILE,  # pylint: disable=protected-access
+            Wannier90Calculation._REQUIRED_INPUT_SUFFIX,  # pylint: disable=protected-access
         )  # actually = aiida
         cmdline_params = [
-            f"--output_seedname",
+            "--output_seedname",
             self._DEFAULT_OUTPUT_SEEDNAME,
             f"{self._DEFAULT_INPUT_FOLDER}/{w90_default_seedname}",
         ]

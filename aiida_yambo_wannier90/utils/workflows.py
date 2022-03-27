@@ -46,7 +46,7 @@ def get_yambo_nscf(workchain: YamboWorkflow) -> PwBaseWorkChain:
     :return: The nscf ``PwBaseWorkChain``
     :rtype: PwBaseWorkChain
     """
-    if not isinstance(workchain, YamboWorkflow):
+    if workchain.process_class != YamboWorkflow:
         raise ValueError(f"input workchain {workchain} is not a `YamboWorkflow`")
 
     nscf_wkchain = (
