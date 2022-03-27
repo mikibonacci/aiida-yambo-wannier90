@@ -4,8 +4,11 @@ import click
 import matplotlib.pyplot as plt
 
 from aiida import orm
-from aiida.cmdline.params.types import NodeParamType
+
+# from aiida.cmdline.params.types import NodeParamType
 from aiida.cmdline.utils import decorators
+
+from aiida_wannier90_workflows.cli.params import FilteredWorkflowParamType
 
 from .root import cmd_root
 
@@ -16,16 +19,34 @@ def cmd_plot():
 
 
 @cmd_plot.command("bands")
-@click.argument("pw", type=NodeParamType())
+@click.argument(
+    "pw",
+    type=FilteredWorkflowParamType(
+        process_classes=(
+            "aiida.workflows:quantumespresso.pw.base",
+            "aiida.workflows:quantumespresso.pw.bands",
+        )
+    ),
+)
 @click.option(
     "--w90",
-    type=NodeParamType(),
+    type=FilteredWorkflowParamType(
+        process_classes=("aiida.workflows:wannier90_workflows.base.wannier90",)
+    ),
     help=(
         "If provided, use this BandsData instead of Wannier90 bands from W90_QP, "
         "accepts Wannier90BandsWorkChain/Wannier90BaseWorkChain/BandsData"
     ),
 )
-@click.argument("w90_qp", type=NodeParamType())
+@click.argument(
+    "w90_qp",  # pylint: disable=too-many-locals
+    type=FilteredWorkflowParamType(
+        process_classes=(
+            "aiida.workflows:yambo_wannier90",
+            "aiida.workflows:wannier90_workflows.base.wannier90",
+        )
+    ),
+)
 @decorators.with_dbenv()
 def cmd_plot_bands(pw, w90, w90_qp):
     """Compare PW, Wannier90, and Wannier90 QP-corrected band structures.
@@ -81,11 +102,16 @@ def cmd_plot_bands(pw, w90, w90_qp):
 
     plot_band(bands_w90_qp, ref_zero=fermi_energy, ax=ax)
 
-    ax.set_title(
-        f"{pw.process_label}<{pw.pk}>,"
-        f"{w90.process_label}<{w90.pk}>,"
-        f"{w90_qp.process_label}<{w90_qp.pk}>"
-    )
+    title = ""
+    if w90 is None:
+        title = f"{pw.process_label}<{pw.pk}>,{w90_qp.process_label}<{w90_qp.pk}>"
+    else:
+        title = (
+            f"{pw.process_label}<{pw.pk}>,"
+            f"{w90.process_label}<{w90.pk}>,"
+            f"{w90_qp.process_label}<{w90_qp.pk}>"
+        )
+    ax.set_title(title)
 
     plt.autoscale(axis="y")
     plt.show()
