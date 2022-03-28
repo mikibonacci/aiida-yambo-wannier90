@@ -7,6 +7,7 @@ from aiida_quantumespresso.workflows.pw.base import PwBaseWorkChain
 
 from aiida_yambo.workflows.yamboconvergence import YamboConvergence
 from aiida_yambo.workflows.yambowf import YamboWorkflow
+from aiida_yambo.utils.common_helpers import *
 
 
 def get_yambo_converged_workchain(workchain: YamboConvergence) -> YamboWorkflow:
@@ -49,12 +50,15 @@ def get_yambo_nscf(workchain: YamboWorkflow) -> PwBaseWorkChain:
     if workchain.process_class != YamboWorkflow:
         raise ValueError(f"input workchain {workchain} is not a `YamboWorkflow`")
 
-    nscf_wkchain = (
+    try:
+        nscf_wkchain = (
         workchain.get_outgoing(
             link_label_filter="nscf",
         )
         .one()
         .node
-    )
+        )
+    except: #It can happen that the workflow has only as parent the nscf, and did not run the calculation himself
+        nscf_wkchain = find_pw_parent(workchain).caller #the find_pw catches the pw, not the pw.base
 
     return nscf_wkchain
