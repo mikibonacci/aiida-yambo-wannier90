@@ -17,7 +17,7 @@ def get_yambo_converged_workchain(workchain: YamboConvergence) -> YamboWorkflow:
     :return: The converged ``YamboWorkflow``
     :rtype: YamboWorkflow
     """
-    if not isinstance(workchain, YamboConvergence):
+    if workchain.process_class != YamboConvergence:
         raise ValueError(f"input workchain {workchain} is not a `YamboConvergence`")
 
     yambo_history = workchain.outputs.history.get_dict()
