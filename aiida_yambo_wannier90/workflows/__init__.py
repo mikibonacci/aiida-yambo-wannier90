@@ -195,7 +195,7 @@ class YamboWannier90WorkChain(
             },
         )
         spec.expose_inputs(
-            YamboRestart,
+            YamboWorkflow,
             namespace="yambo_qp",
             exclude=(
                 "clean_workdir",
@@ -280,7 +280,7 @@ class YamboWannier90WorkChain(
             namespace_options={"required": False},
         )
         spec.expose_outputs(
-            YamboRestart,
+            YamboWorkflow,
             namespace="yambo_qp",
             namespace_options={"required": False},
         )
@@ -775,7 +775,11 @@ class YamboWannier90WorkChain(
         # Get and reruse the converged input from YamboWorkflow
         converged_wkchain = get_yambo_converged_workchain(self.ctx.wkchain_yambo_conv)
         # pylint: disable=protected-access
-        inputs = converged_wkchain.inputs._construct_attribute_dict(True)
+        input_parameters = converged_wkchain.inputs._construct_attribute_dict(True)
+
+        inputs = AttributeDict(self.exposed_inputs(YamboWorkflow, namespace="yambo_qp"))
+
+        inputs.yres.yambo.parameters = input_parameters.yres.yambo.parameters
 
         # Use commensurate mesh
         inputs.nscf.kpoints = self.ctx.kpoints_gw
@@ -817,7 +821,7 @@ class YamboWannier90WorkChain(
     def prepare_yambo_qp_inputs(self) -> AttributeDict:
         """Prepare inputs for yambo QP."""
         # Get the converged input from YamboWorkflow
-        inputs = AttributeDict(self.exposed_inputs(YamboRestart, namespace="yambo_qp"))
+        inputs = AttributeDict(self.exposed_inputs(YamboWorkflow, namespace="yambo_qp"))
 
         # Prepare QPkrange
         if self.should_run_wannier90():
@@ -867,7 +871,7 @@ class YamboWannier90WorkChain(
         qpkrange = qpkrange.get_list()
 
         # Set QPkrange in GW parameters
-        yambo_params = inputs.yambo.parameters.get_dict()
+        yambo_params = inputs.yres.yambo.parameters.get_dict()
         yambo_params["variables"]["QPkrange"] = [qpkrange, ""]
 
         inputs.yambo.parameters = orm.Dict(dict=yambo_params)
@@ -875,10 +879,10 @@ class YamboWannier90WorkChain(
         inputs.parent_folder = parent_wkchain.outputs.remote_folder
 
         # Use converged output folder
-        settings: dict = inputs.yambo.settings.get_dict()
+        settings: dict = inputs.yres.yambo.settings.get_dict()
         # TODO is this correct?
         settings.update({"INITIALISE": False, "COPY_SAVE": True, "COPY_DBS": True})
-        inputs.yambo.settings = orm.Dict(dict=settings)
+        inputs.yres.yambo.settings = orm.Dict(dict=settings)
 
         return inputs
 
@@ -887,8 +891,8 @@ class YamboWannier90WorkChain(
         inputs = self.prepare_yambo_qp_inputs()
 
         inputs.metadata.call_link_label = "yambo_qp"
-        inputs = prepare_process_inputs(YamboRestart, inputs)
-        running = self.submit(YamboRestart, **inputs)
+        inputs = prepare_process_inputs(YamboWorkflow, inputs)
+        running = self.submit(YamboWorkflow, **inputs)
         self.report(f"launching {running.process_label}<{running.pk}> for yambo_qp")
 
         return ToContext(wkchain_yambo_qp=running)
