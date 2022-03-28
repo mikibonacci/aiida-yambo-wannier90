@@ -668,7 +668,7 @@ class YamboWannier90WorkChain(
         converged_wkchain = get_yambo_converged_workchain(wkchain)
         nscf_wkchain = get_yambo_nscf(converged_wkchain)
 
-        self.ctx.kpoints_gw_conv = nscf_wkchain.inputs.pw.kpoints
+        self.ctx.kpoints_gw_conv = nscf_wkchain.inputs.kpoints
 
     def should_run_setup_kmesh(self) -> bool:
         """Whether to run setup_kmesh."""
