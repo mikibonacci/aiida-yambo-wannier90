@@ -1026,11 +1026,12 @@ class YamboWannier90WorkChain(
             params["fermi_energy"] = fermi_energy
 
             # TODO I should just restart w/o wannierisation
+            # I reuse parameters from previous calculation, overwriting the user inputs
             if inputs.shift_energy_windows:
                 keys = ("dis_froz_min", "dis_froz_max", "dis_win_min", "dis_win_max")
                 for key in keys:
                     if key in w90calc_params:
-                        params[key] += w90calc_params[key]
+                        params[key] = w90calc_params[key]
                 inputs.shift_energy_windows = False
 
             inputs.wannier90.parameters = orm.Dict(dict=params)
