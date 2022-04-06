@@ -18,12 +18,10 @@ from aiida_wannier90_workflows.cli.params import RUN
 from aiida_wannier90_workflows.utils.kpoints import get_kpoints_from_bands
 from aiida_wannier90_workflows.utils.workflows.builder import (
     print_builder,
-    set_kpoints,
     set_parallelization,
     submit_and_add_group,
 )
 from aiida_wannier90_workflows.workflows.bands import Wannier90BandsWorkChain
-from aiida_wannier90_workflows.workflows.base.wannier90 import Wannier90BaseWorkChain
 
 
 def submit(group: orm.Group = None, run: bool = False):
@@ -66,16 +64,22 @@ def submit(group: orm.Group = None, run: bool = False):
     # Reuse parameters
     params = yambo_wkchain.inputs.yres.yambo.parameters.get_dict()
     params["variables"]["X_and_IO_nCPU_LinAlg_INV"] = [1, ""]
-    builder.yambo_qp.yambo.parameters = orm.Dict(dict=params)
+    builder.yambo_qp.yres.yambo.parameters = orm.Dict(dict=params)
 
     # Force W90 use the same GW kmesh
-    kpoints_gw = yambo_wkchain.inputs.nscf.kpoints
-    # wannier90 step
-    set_kpoints(builder["wannier90"], kpoints_gw, process_class=Wannier90BandsWorkChain)
-    # wannier90_qp step
-    set_kpoints(
-        builder["wannier90_qp"], kpoints_gw, process_class=Wannier90BaseWorkChain
-    )
+    # (some times W90 mesh is higher than GW converged)
+    # 1. either set kpoints explicitly
+    # from aiida_wannier90_workflows.workflows.base.wannier90 import Wannier90BaseWorkChain
+    # from aiida_wannier90_workflows.utils.workflows.builder import set_kpoints
+    # kpoints_gw = yambo_wkchain.inputs.nscf.kpoints
+    # # wannier90 step
+    # set_kpoints(builder["wannier90"], kpoints_gw, process_class=Wannier90BandsWorkChain)
+    # # wannier90_qp step
+    # set_kpoints(
+    #     builder["wannier90_qp"], kpoints_gw, process_class=Wannier90BaseWorkChain
+    # )
+    # 2. or using builder.kpoints_force_gw
+    builder.kpoints_force_gw = True
 
     parallelization = dict(
         max_wallclock_seconds=5 * 3600,

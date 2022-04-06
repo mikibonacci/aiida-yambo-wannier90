@@ -251,6 +251,14 @@ class YamboWannier90WorkChain(
         )
         spec.inputs["wannier90_qp"].validator = validate_inputs_base_wannier90
 
+        spec.input(
+            "kpoints_force_gw",
+            valid_type=orm.Bool,
+            serializer=orm.to_aiida_type,
+            default=lambda: orm.Bool(False),
+            help="If `True` will force W90 to use the GW converged k-point mesh.",
+        )
+
         spec.inputs.validator = validate_inputs
 
         spec.output(
@@ -585,7 +593,10 @@ class YamboWannier90WorkChain(
         if self.should_run_wannier90():
             self.ctx.kpoints_w90_input = self.inputs.wannier90.nscf.kpoints
 
-            if not self.should_run_yambo_convergence():
+            if (
+                not self.should_run_yambo_convergence()
+                and not self.inputs.kpoints_force_gw
+            ):
                 kmesh_gw_conv = get_mesh_from_kpoints(self.ctx.kpoints_gw_conv)
                 kmesh_w90_input = get_mesh_from_kpoints(self.ctx.kpoints_w90_input)
 
@@ -683,6 +694,18 @@ class YamboWannier90WorkChain(
         kpoints_gw_conv = self.ctx.kpoints_gw_conv
         kpoints_w90_input = self.ctx.kpoints_w90_input
 
+        kmesh_gw_conv = get_mesh_from_kpoints(kpoints_gw_conv)
+        kmesh_w90_input = get_mesh_from_kpoints(kpoints_w90_input)
+
+        if self.inputs.kpoints_force_gw:
+            self.ctx.kpoints_gw = kpoints_gw_conv
+            self.ctx.kpoints_w90 = get_explicit_kpoints(kpoints_gw_conv)
+            self.report(
+                f"Converged GW kmesh = {kmesh_gw_conv}, W90 input kmesh = {kmesh_w90_input}. "
+                f"Force W90 using GW kmesh = {kmesh_gw_conv}."
+            )
+            return
+
         result = find_commensurate_meshes(  # pylint: disable=unexpected-keyword-arg
             dense_mesh=kpoints_gw_conv,
             coarse_mesh=kpoints_w90_input,
@@ -690,9 +713,6 @@ class YamboWannier90WorkChain(
         )
         kpoints_dense = result["dense_mesh"]
         kpoints_coarse = result["coarse_mesh"]
-
-        kmesh_gw_conv = get_mesh_from_kpoints(kpoints_gw_conv)
-        kmesh_w90_input = get_mesh_from_kpoints(kpoints_w90_input)
 
         kmesh_dense = get_mesh_from_kpoints(kpoints_dense)
         kmesh_coarse = get_mesh_from_kpoints(kpoints_coarse)
@@ -731,13 +751,9 @@ class YamboWannier90WorkChain(
 
         # Use commensurate kmesh
         if self.ctx.kpoints_w90_input != self.ctx.kpoints_w90:
-            inputs.nscf.pw.kpoints = self.ctx.kpoints_w90
-            inputs.wannier90.wannier90.kpoints = self.ctx.kpoints_w90
-
-            mp_grid = get_mesh_from_kpoints(self.ctx.kpoints_w90)
-            params = inputs.wannier90.wannier90.parameters.get_dict()
-            params["mp_grid"] = mp_grid
-            inputs.wannier90.wannier90.parameters = orm.Dict(dict=params)
+            set_kpoints(
+                inputs, self.ctx.kpoints_w90, process_class=Wannier90OptimizeWorkChain
+            )
 
         return inputs
 
@@ -830,7 +846,6 @@ class YamboWannier90WorkChain(
         inputs = AttributeDict(self.exposed_inputs(YamboWorkflow, namespace="yambo_qp"))
         yambo_params = inputs.yres.yambo.parameters.get_dict()
 
-
         # Prepare QPkrange
         if self.should_run_wannier90():
             w90_calc_inputs = self.ctx.wkchain_wannier90.inputs.wannier90.wannier90
@@ -846,7 +861,6 @@ class YamboWannier90WorkChain(
         if self.should_run_yambo_commensurate():
             parent_wkchain = self.ctx.wkchain_yambo_commensurate
             yambo_params = parent_wkchain.inputs.yres.yambo.parameters.get_dict()
-
         else:
             if self.should_run_yambo_convergence():
                 parent_wkchain = get_yambo_converged_workchain(
