@@ -164,15 +164,18 @@ def gw2wannier90(seedname: str, seednameGW: str, targets: list) -> None:
             "Exclude bands option is used: be careful to be consistent "
             + "with the choice of bands for the GW QP corrections."
         )
+        nexbands = exbands[0]
+        exbands = np.zeros(nexbands, dtype=int)
+        for i in range(nexbands):
+            exbands[i] = int(f.readline().strip())
+        # 0-based indexing
+        exbands -= 1
+    else:
+        exbands = np.array([], dtype=int)
 
-    corrections = np.loadtxt(seedname + ".gw.unsorted.eig")
-    corrections = {(int(l[1]) - 1, int(l[0]) - 1): l[2] for l in corrections}
-    print("G0W0 QP corrections read from ", seedname + ".gw.unsorted.eig")
-    # print(corrections)
     eigenDFT = np.loadtxt(seedname + ".eig")
     nk = int(eigenDFT[:, 1].max())
     assert nk == NKPT
-
     nbndDFT = int(eigenDFT[:, 0].max())
     eigenDFT = eigenDFT[:, 2].reshape(NKPT, nbndDFT, order="C")
     # print(eigenDFT)
@@ -182,11 +185,28 @@ def gw2wannier90(seedname: str, seednameGW: str, targets: list) -> None:
         f_raw.write(str(line) + "\n")
     f_raw.write("------------------------------\n")
 
-    providedGW = [
-        ib
-        for ib in range(nbndDFT)
-        if all((ik, ib) in list(corrections.keys()) for ik in range(NKPT))
-    ]
+    corrections = np.loadtxt(seedname + ".gw.unsorted.eig")
+    # Indexing with dict is too slow, use np.array instead.
+    # corrections = {(int(l[1]) - 1, int(l[0]) - 1): l[2] for l in corrections}
+    # print(corrections)
+    corrections_val = np.zeros((nk, nbndDFT + len(exbands)))
+    corrections_mask = np.zeros_like(corrections_val, dtype=bool)
+    idx_b = corrections[:, 0].astype(int) - 1
+    idx_k = corrections[:, 1].astype(int) - 1
+    corrections_val[idx_k, idx_b] = corrections[:, 2]
+    corrections_mask[idx_k, idx_b] = True
+    # Strip excluded bands
+    if len(exbands) > 0:
+        corrections_val = np.delete(corrections_val, exbands, axis=1)
+        corrections_mask = np.delete(corrections_mask, exbands, axis=1)
+    print("G0W0 QP corrections read from ", seedname + ".gw.unsorted.eig")
+
+    # providedGW = [
+    #     ib
+    #     for ib in range(nbndDFT)
+    #     if all((ik, ib) in list(corrections.keys()) for ik in range(NKPT))
+    # ]
+    providedGW = [ib for ib in range(nbndDFT) if np.all(corrections_mask[:, ib])]
     # print(providedGW)
     f_raw.write("------------------------------\n")
     f_raw.write("List of provided GW corrections (bands indexes)\n")
@@ -194,15 +214,17 @@ def gw2wannier90(seedname: str, seednameGW: str, targets: list) -> None:
     f_raw.write("------------------------------\n")
     NBND = len(providedGW)
     print("Adding GW QP corrections to KS eigenvalues")
-    eigenDE = np.array(
-        [[corrections[(ik, ib)] for ib in providedGW] for ik in range(NKPT)]
-    )
-    eigenDFTGW = np.array(
-        [
-            [eigenDFT[ik, ib] + corrections[(ik, ib)] for ib in providedGW]
-            for ik in range(NKPT)
-        ]
-    )
+    # eigenDE = np.array(
+    #     [[corrections[(ik, ib)] for ib in providedGW] for ik in range(NKPT)]
+    # )
+    # eigenDFTGW = np.array(
+    #     [
+    #         [eigenDFT[ik, ib] + corrections[(ik, ib)] for ib in providedGW]
+    #         for ik in range(NKPT)
+    #     ]
+    # )
+    eigenDE = corrections_val[:, providedGW]
+    eigenDFTGW = eigenDFT[:, providedGW] + eigenDE
 
     f_raw.write("------------------------------\n")
     f_raw.write("Writing GW eigenvalues unsorted (KS + QP correction)\n")
@@ -300,9 +322,8 @@ def gw2wannier90(seedname: str, seednameGW: str, targets: list) -> None:
             assert nk == NKPT
             f_mmn_out.write(f"    {NBND}   {nk}    {nnb} \n")
 
-            MMN = []
+            MMN = np.zeros((nk, nnb, NBND, NBND), dtype=complex)
             for ik in range(nk):
-                MMN.append([])
                 for ib in range(nnb):
                     s = f_mmn_in.readline()
                     f_mmn_out.write(s)
@@ -320,12 +341,12 @@ def gw2wannier90(seedname: str, seednameGW: str, targets: list) -> None:
                         tmp[BANDSORT[ik2], :, :][:, BANDSORT[ik1], :], dtype=float
                     )
                     tmp = (tmp[:, :, 0] + 1j * tmp[:, :, 1]).T
-                    MMN[ik].append(tmp)
+                    MMN[ik, ib, :, :] = tmp
                     for n in range(NBND):
                         for m in range(NBND):
                             f_mmn_out.write(
                                 "  {:16.12f}  {:16.12f}\n".format(
-                                    MMN[ik][ib][m, n].real, MMN[ik][ib][m, n].imag
+                                    tmp[m, n].real, tmp[m, n].imag
                                 )
                             )
             print("----------\n MMN OK  \n----------\n")
