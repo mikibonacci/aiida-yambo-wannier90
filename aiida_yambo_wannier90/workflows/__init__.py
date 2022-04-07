@@ -165,6 +165,13 @@ class YamboWannier90WorkChain(
             help="Minimum kpoints distance for seekpath to generate a list of kpoints along the path. "
             "Specify either this or `bands_kpoints`.",
         )
+        spec.input(
+            "kpoints_force_gw",
+            valid_type=orm.Bool,
+            serializer=orm.to_aiida_type,
+            default=lambda: orm.Bool(False),
+            help="If `True` will force W90 to use the GW converged k-point mesh.",
+        )
         spec.expose_inputs(
             YamboConvergence,
             namespace="yambo",
@@ -175,22 +182,6 @@ class YamboWannier90WorkChain(
             ),
             namespace_options={
                 "help": "Inputs for the `YamboConvergence` for yambo calculation.",
-                "required": False,
-                "populate_defaults": False,
-            },
-        )
-        spec.expose_inputs(
-            Wannier90OptimizeWorkChain,
-            namespace="wannier90",
-            exclude=(
-                "clean_workdir",
-                "structure",
-                "kpoint_path",
-                "bands_kpoints",
-                "bands_kpoints_distance",
-            ),
-            namespace_options={
-                "help": "Inputs for the `Wannier90OptimizeWorkChain` for wannier90 calculation.",
                 "required": False,
                 "populate_defaults": False,
             },
@@ -218,6 +209,22 @@ class YamboWannier90WorkChain(
             exclude=("clean_workdir",),
             namespace_options={
                 "help": "Inputs for the `YppRestart` calculation. ",
+                "required": False,
+                "populate_defaults": False,
+            },
+        )
+        spec.expose_inputs(
+            Wannier90OptimizeWorkChain,
+            namespace="wannier90",
+            exclude=(
+                "clean_workdir",
+                "structure",
+                "kpoint_path",
+                "bands_kpoints",
+                "bands_kpoints_distance",
+            ),
+            namespace_options={
+                "help": "Inputs for the `Wannier90OptimizeWorkChain` for wannier90 calculation.",
                 "required": False,
                 "populate_defaults": False,
             },
@@ -251,14 +258,6 @@ class YamboWannier90WorkChain(
         )
         spec.inputs["wannier90_qp"].validator = validate_inputs_base_wannier90
 
-        spec.input(
-            "kpoints_force_gw",
-            valid_type=orm.Bool,
-            serializer=orm.to_aiida_type,
-            default=lambda: orm.Bool(False),
-            help="If `True` will force W90 to use the GW converged k-point mesh.",
-        )
-
         spec.inputs.validator = validate_inputs
 
         spec.output(
@@ -279,11 +278,6 @@ class YamboWannier90WorkChain(
             namespace_options={"required": False},
         )
         spec.expose_outputs(
-            Wannier90OptimizeWorkChain,
-            namespace="wannier90",
-            namespace_options={"required": False},
-        )
-        spec.expose_outputs(
             YamboWorkflow,
             namespace="yambo_commensurate",
             namespace_options={"required": False},
@@ -294,8 +288,18 @@ class YamboWannier90WorkChain(
             namespace_options={"required": False},
         )
         spec.expose_outputs(
+            Wannier90BaseWorkChain,
+            namespace="wannier90_pp",
+            namespace_options={"required": False},
+        )
+        spec.expose_outputs(
             YppRestart,
             namespace="ypp",
+            namespace_options={"required": False},
+        )
+        spec.expose_outputs(
+            Wannier90OptimizeWorkChain,
+            namespace="wannier90",
             namespace_options={"required": False},
         )
         spec.expose_outputs(
@@ -331,22 +335,26 @@ class YamboWannier90WorkChain(
             if_(cls.should_run_setup_kmesh)(
                 cls.setup_kmesh,
             ),
-            if_(cls.should_run_wannier90)(
-                cls.run_wannier90,
-                cls.inspect_wannier90,
-            ),
             if_(cls.should_run_yambo_commensurate)(
                 cls.run_yambo_commensurate,
                 cls.inspect_yambo_commensurate,
             ),
+            # TODO run an additional yambo_qp on shifted grid to check w90_qp bands
             if_(cls.should_run_yambo_qp)(
                 cls.run_yambo_qp,
                 cls.inspect_yambo_qp,
             ),
-            # TODO run yambo on shifted grid
+            if_(cls.should_run_wannier90_pp)(
+                cls.run_wannier90_pp,
+                cls.inspect_wannier90_pp,
+            ),
             if_(cls.should_run_ypp)(
                 cls.run_ypp,
                 cls.inspect_ypp,
+            ),
+            if_(cls.should_run_wannier90)(
+                cls.run_wannier90,
+                cls.inspect_wannier90,
             ),
             if_(cls.should_run_gw2wannier90)(
                 cls.run_gw2wannier90,
@@ -374,8 +382,8 @@ class YamboWannier90WorkChain(
         )
         spec.exit_code(
             404,
-            "ERROR_SUB_PROCESS_FAILED_WANNIER90",
-            message="Unrecoverable error when running wannier.",
+            "ERROR_SUB_PROCESS_FAILED_WANNIER90_PP",
+            message="Unrecoverable error when running wannier90 postproc.",
         )
         spec.exit_code(
             405,
@@ -394,13 +402,18 @@ class YamboWannier90WorkChain(
         )
         spec.exit_code(
             408,
+            "ERROR_SUB_PROCESS_FAILED_WANNIER90",
+            message="Unrecoverable error when running wannier90.",
+        )
+        spec.exit_code(
+            409,
             "ERROR_SUB_PROCESS_FAILED_GW2WANNIER90",
             message="Unrecoverable error when running gw2wannier90.",
         )
         spec.exit_code(
-            409,
+            410,
             "ERROR_SUB_PROCESS_FAILED_WANNIER90_QP",
-            message="Unrecoverable error when running wannier with QP-corrected eig.",
+            message="Unrecoverable error when running wannier90 with QP-corrected eig.",
         )
 
     @classmethod
@@ -733,53 +746,6 @@ class YamboWannier90WorkChain(
         else:
             self.ctx.kpoints_gw = kpoints_dense
 
-    def should_run_wannier90(self) -> bool:
-        """Whether to run wannier."""
-        if "wannier90" in self.inputs:
-            return True
-
-        return False
-
-    def prepare_wannier90_inputs(self) -> AttributeDict:
-        """Prepare inputs for wannier90."""
-        inputs = AttributeDict(
-            self.exposed_inputs(Wannier90OptimizeWorkChain, namespace="wannier90")
-        )
-
-        inputs.structure = self.ctx.current_structure
-        inputs.bands_kpoints = self.ctx.current_bands_kpoints
-
-        # Use commensurate kmesh
-        if self.ctx.kpoints_w90_input != self.ctx.kpoints_w90:
-            set_kpoints(
-                inputs, self.ctx.kpoints_w90, process_class=Wannier90OptimizeWorkChain
-            )
-
-        return inputs
-
-    def run_wannier90(self) -> ty.Dict:
-        """Run the `Wannier90BandsWorkChain`."""
-        inputs = self.prepare_wannier90_inputs()
-
-        inputs.metadata.call_link_label = "wannier90"
-        inputs = prepare_process_inputs(Wannier90OptimizeWorkChain, inputs)
-        running = self.submit(Wannier90OptimizeWorkChain, **inputs)
-        self.report(f"launching {running.process_label}<{running.pk}>")
-
-        return ToContext(wkchain_wannier90=running)
-
-    def inspect_wannier90(  # pylint: disable=inconsistent-return-statements
-        self,
-    ) -> ty.Union[None, ExitCode]:
-        """Verify that the `Wannier90BandsWorkChain` successfully finished."""
-        wkchain = self.ctx.wkchain_wannier90
-
-        if not wkchain.is_finished_ok:
-            self.report(
-                f"{wkchain.process_label} failed with exit status {wkchain.exit_status}"
-            )
-            return self.exit_codes.ERROR_SUB_PROCESS_FAILED_WANNIER90
-
     def should_run_yambo_commensurate(self) -> bool:
         """Whether to run again yambo on the commensurate kmesh."""
         if not self.should_run_yambo_convergence():
@@ -848,7 +814,8 @@ class YamboWannier90WorkChain(
 
         # Prepare QPkrange
         if self.should_run_wannier90():
-            w90_calc_inputs = self.ctx.wkchain_wannier90.inputs.wannier90.wannier90
+            # w90_calc_inputs = self.ctx.wkchain_wannier90.inputs.wannier90.wannier90
+            w90_calc_inputs = self.inputs.wannier90.wannier90.wannier90
         else:
             w90_calc_inputs = self.inputs.wannier90_qp.wannier90
         w90_params = w90_calc_inputs.parameters.get_dict()
@@ -936,6 +903,64 @@ class YamboWannier90WorkChain(
             )
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_YAMBO_QP
 
+    def should_run_wannier90_pp(self) -> bool:
+        """Whether to run wannier."""
+        if self.should_run_ypp() and "nnkp_file" not in self.inputs.ypp.ypp:
+            return True
+
+        return False
+
+    def prepare_wannier90_pp_inputs(self) -> AttributeDict:
+        """Prepare inputs for wannier90_pp, only for generating nnkp file."""
+        inputs = AttributeDict(
+            self.exposed_inputs(Wannier90OptimizeWorkChain, namespace="wannier90")
+        )["wannier90"]
+
+        inputs.wannier90.structure = self.ctx.current_structure
+        inputs.wannier90.bands_kpoints = self.ctx.current_bands_kpoints
+
+        # Use commensurate kmesh
+        if self.ctx.kpoints_w90_input != self.ctx.kpoints_w90:
+            set_kpoints(
+                inputs, self.ctx.kpoints_w90, process_class=Wannier90BaseWorkChain
+            )
+
+        # Only for nnkp, no BandsData for shifting windows
+        inputs.shift_energy_windows = False
+
+        # Add `postproc_setup`
+        if "settings" in inputs.wannier90:
+            settings = inputs.wannier90["settings"].get_dict()
+        else:
+            settings = {}
+        settings["postproc_setup"] = True
+        inputs.wannier90["settings"] = settings
+
+        return inputs
+
+    def run_wannier90_pp(self) -> ty.Dict:
+        """Run the `Wannier90BaseWorkChain` for postproc."""
+        inputs = self.prepare_wannier90_pp_inputs()
+
+        inputs.metadata.call_link_label = "wannier90_pp"
+        inputs = prepare_process_inputs(Wannier90BaseWorkChain, inputs)
+        running = self.submit(Wannier90BaseWorkChain, **inputs)
+        self.report(f"launching {running.process_label}<{running.pk}> for postproc")
+
+        return ToContext(wkchain_wannier90_pp=running)
+
+    def inspect_wannier90_pp(  # pylint: disable=inconsistent-return-statements
+        self,
+    ) -> ty.Union[None, ExitCode]:
+        """Verify that the `Wannier90BaseWorkChain` successfully finished."""
+        wkchain = self.ctx.wkchain_wannier90_pp
+
+        if not wkchain.is_finished_ok:
+            self.report(
+                f"{wkchain.process_label} failed with exit status {wkchain.exit_status}"
+            )
+            return self.exit_codes.ERROR_SUB_PROCESS_FAILED_WANNIER90_PP
+
     def should_run_ypp(self) -> bool:
         """Whether to run ypp."""
         if "ypp" in self.inputs:
@@ -953,10 +978,8 @@ class YamboWannier90WorkChain(
             inputs.ypp.QP_DB = yambo_wkchain.outputs.QP_db
             inputs.parent_folder = yambo_wkchain.outputs.remote_folder
 
-        if self.should_run_wannier90():
-            inputs.ypp.nnkp_file = (
-                self.ctx.wkchain_wannier90.outputs.wannier90_pp.nnkp_file
-            )
+        if self.should_run_wannier90_pp():
+            inputs.ypp.nnkp_file = self.ctx.wkchain_wannier90_pp.outputs.nnkp_file
 
         return inputs
 
@@ -982,6 +1005,53 @@ class YamboWannier90WorkChain(
                 f"{wkchain.process_label} failed with exit status {wkchain.exit_status}"
             )
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_YPP
+
+    def should_run_wannier90(self) -> bool:
+        """Whether to run wannier."""
+        if "wannier90" in self.inputs:
+            return True
+
+        return False
+
+    def prepare_wannier90_inputs(self) -> AttributeDict:
+        """Prepare inputs for wannier90."""
+        inputs = AttributeDict(
+            self.exposed_inputs(Wannier90OptimizeWorkChain, namespace="wannier90")
+        )
+
+        inputs.structure = self.ctx.current_structure
+        inputs.bands_kpoints = self.ctx.current_bands_kpoints
+
+        # Use commensurate kmesh
+        if self.ctx.kpoints_w90_input != self.ctx.kpoints_w90:
+            set_kpoints(
+                inputs, self.ctx.kpoints_w90, process_class=Wannier90OptimizeWorkChain
+            )
+
+        return inputs
+
+    def run_wannier90(self) -> ty.Dict:
+        """Run the `Wannier90BandsWorkChain`."""
+        inputs = self.prepare_wannier90_inputs()
+
+        inputs.metadata.call_link_label = "wannier90"
+        inputs = prepare_process_inputs(Wannier90OptimizeWorkChain, inputs)
+        running = self.submit(Wannier90OptimizeWorkChain, **inputs)
+        self.report(f"launching {running.process_label}<{running.pk}>")
+
+        return ToContext(wkchain_wannier90=running)
+
+    def inspect_wannier90(  # pylint: disable=inconsistent-return-statements
+        self,
+    ) -> ty.Union[None, ExitCode]:
+        """Verify that the `Wannier90BandsWorkChain` successfully finished."""
+        wkchain = self.ctx.wkchain_wannier90
+
+        if not wkchain.is_finished_ok:
+            self.report(
+                f"{wkchain.process_label} failed with exit status {wkchain.exit_status}"
+            )
+            return self.exit_codes.ERROR_SUB_PROCESS_FAILED_WANNIER90
 
     def should_run_gw2wannier90(self) -> bool:
         """Whether to run gw2wannier90."""
@@ -1105,15 +1175,6 @@ class YamboWannier90WorkChain(
                 )
             )
 
-        if "wkchain_wannier90" in self.ctx:
-            self.out_many(
-                self.exposed_outputs(
-                    self.ctx.wkchain_wannier90,
-                    Wannier90OptimizeWorkChain,
-                    namespace="wannier90",
-                )
-            )
-
         if "wkchain_yambo_commensurate" in self.ctx:
             self.out_many(
                 self.exposed_outputs(
@@ -1132,12 +1193,30 @@ class YamboWannier90WorkChain(
                 )
             )
 
+        if "wkchain_wannier90_pp" in self.ctx:
+            self.out_many(
+                self.exposed_outputs(
+                    self.ctx.wkchain_wannier90_pp,
+                    Wannier90BaseWorkChain,
+                    namespace="wannier90_pp",
+                )
+            )
+
         if "wkchain_ypp" in self.ctx:
             self.out_many(
                 self.exposed_outputs(
                     self.ctx.wkchain_ypp,
                     YppRestart,
                     namespace="ypp",
+                )
+            )
+
+        if "wkchain_wannier90" in self.ctx:
+            self.out_many(
+                self.exposed_outputs(
+                    self.ctx.wkchain_wannier90,
+                    Wannier90OptimizeWorkChain,
+                    namespace="wannier90",
                 )
             )
 
