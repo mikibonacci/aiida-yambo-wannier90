@@ -22,6 +22,7 @@ def submit(group: orm.Group = None, run: bool = False):
     # I need to use the seekpath-reduced primitive structure
     yambo_wkchain = orm.load_node(140260)  # Si
     parent_folder = yambo_wkchain.outputs.remote_folder
+    qb_db = yambo_wkchain.outputs.QP_db
 
     code = orm.load_code("yambo-5.0-ypp@prnmarvelcompute5")
 
@@ -37,7 +38,7 @@ def submit(group: orm.Group = None, run: bool = False):
     nnkp = w90_wkchain.outputs.wannier90_pp.nnkp_file
 
     builder["ypp"]["nnkp_file"] = nnkp
-    builder["ypp"]["QP_DB"] = yambo_wkchain.outputs.QP_db
+    builder["ypp"]["QP_DB"] = qb_db
 
     print_builder(builder)
 
