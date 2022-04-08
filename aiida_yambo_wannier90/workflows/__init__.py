@@ -64,7 +64,7 @@ def validate_inputs(  # pylint: disable=inconsistent-return-statements,too-many-
     """Validate the inputs of the entire input namespace."""
 
     # Must run steps sequentially
-    order = ["yambo", "wannier90", "yambo_qp", "ypp", "gw2wannier90", "wannier90_qp"]
+    order = ["yambo", "yambo_qp", "ypp", "wannier90", "gw2wannier90", "wannier90_qp"]
     non_empty = [_ in inputs for _ in order]
     first_input = non_empty.index(True)
     if not all(non_empty[first_input:]):
@@ -98,6 +98,8 @@ def validate_inputs(  # pylint: disable=inconsistent-return-statements,too-many-
             if "parent_folder" not in ypp_inputs:
                 return "`ypp.parent_folder` is empty."
 
+        # I need `wannier90` input to run a w90 postproc before `ypp`,
+        # or if there is `nnkp`, I skip the postproc.
         if not should_run_wannier90:
             if "nnkp_file" not in ypp_inputs["ypp"]:
                 return "`ypp.ypp.nnkp_file` is empty."
@@ -609,6 +611,9 @@ class YamboWannier90WorkChain(
             if (
                 not self.should_run_yambo_convergence()
                 and not self.inputs.kpoints_force_gw
+                # If starting wannier90+gw2wannier90+wannier90_qp from unsorted.eig,
+                # then I don't know the gw converged mesh
+                and self.ctx.kpoints_gw_conv is not None
             ):
                 kmesh_gw_conv = get_mesh_from_kpoints(self.ctx.kpoints_gw_conv)
                 kmesh_w90_input = get_mesh_from_kpoints(self.ctx.kpoints_w90_input)
@@ -621,9 +626,9 @@ class YamboWannier90WorkChain(
                     return self.exit_codes.ERROR_SUB_PROCESS_FAILED_SETUP
 
         # Commensurate meshes for GW and W90
-        # I always use commensurate mesh in W90 step
         self.ctx.kpoints_gw = None
-        self.ctx.kpoints_w90 = None
+        # Initialize with input mesh
+        self.ctx.kpoints_w90 = self.ctx.kpoints_w90_input
 
     def should_run_seekpath(self):
         """Run seekpath if the `inputs.bands_kpoints` is not provided."""
@@ -700,7 +705,7 @@ class YamboWannier90WorkChain(
 
     def should_run_setup_kmesh(self) -> bool:
         """Whether to run setup_kmesh."""
-        return self.should_run_yambo_convergence() or self.should_run_wannier90()
+        return self.should_run_yambo_convergence() or self.should_run_wannier90_pp()
 
     def setup_kmesh(self) -> None:
         """Find commensurate kmeshes for both Yambo and Wannier90."""
