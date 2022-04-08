@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 """Base class for Yambo+Wannier90 workflow."""
+from email.charset import QP
 import pathlib
 import typing as ty
 
@@ -208,7 +209,18 @@ class YamboWannier90WorkChain(
             namespace="ypp",
             exclude=("clean_workdir",),
             namespace_options={
-                "help": "Inputs for the `YppRestart` calculation. ",
+                "help": "Inputs for the `YppRestart` calculation, to be used for unsorted.eig generation. ",
+                "required": False,
+                "populate_defaults": False,
+            },
+        )
+
+        spec.expose_inputs(
+            YppRestart,
+            namespace="ypp_QP",
+            exclude=("clean_workdir",),
+            namespace_options={
+                "help": "Inputs for the `YppRestart` calculation, to be used for merging QP dbs. ",
                 "required": False,
                 "populate_defaults": False,
             },
@@ -343,6 +355,10 @@ class YamboWannier90WorkChain(
             if_(cls.should_run_yambo_qp)(
                 cls.run_yambo_qp,
                 cls.inspect_yambo_qp,
+            ),
+            if_(cls.should_run_ypp_qp)(
+                cls.run_ypp_qp,
+                cls.inspect_ypp_qp,
             ),
             if_(cls.should_run_wannier90_pp)(
                 cls.run_wannier90_pp,
@@ -549,6 +565,15 @@ class YamboWannier90WorkChain(
         # ypp_builder.QP_DB = load_node(2329)
         inputs["ypp"] = ypp_builder._inputs(prune=True)
         inputs["ypp"].pop("clean_workdir", None)
+
+        #ypp_QP
+        ypp_builder = YppRestart.get_builder_from_protocol(
+            code=codes["ypp"],
+            protocol="merge_QP",
+        )
+
+        inputs["ypp_QP"] = ypp_builder._inputs(prune=True)
+        inputs["ypp_QP"].pop("clean_workdir", None) #but actually I want to clean the wdir
 
         # Prepare gw2wannier90
         inputs["gw2wannier90"] = {
@@ -863,7 +888,19 @@ class YamboWannier90WorkChain(
         qpkrange = qpkrange.get_list()
 
         # Set QPkrange in GW parameters
-        yambo_params["variables"]["QPkrange"] = [qpkrange, ""]
+        #yambo_params["variables"]["QPkrange"] = [qpkrange, ""]
+
+        # To be set from input
+        if not hasattr(inputs,'QP_subset_dict'):
+            inputs.QP_subset_dict = orm.Dict(dict={
+                                        'qp_per_subset':50,
+                                        'parallel_runs':4,
+                                        'explicit':qpkrange,
+                                    })
+        else:
+            QP_subset_dict = inputs.QP_subset_dict.get_dict() 
+            QP_subset_dict['explicit'] = qpkrange
+            inputs.QP_subset_dict = orm.Dict(dict=QP_subset_dict)
 
         inputs.scf.pw.structure = self.ctx.current_structure
         inputs.nscf.pw.structure = self.ctx.current_structure
@@ -902,6 +939,48 @@ class YamboWannier90WorkChain(
                 f"{wkchain.process_label} failed with exit status {wkchain.exit_status}"
             )
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_YAMBO_QP
+
+    def should_run_ypp_qp(self) -> bool:
+        """Whether to run ypp_QP."""
+
+        QP_list = self.ctx.wkchain_yambo_qp.outputs.splitted_QP_calculations.get_list()
+        if "ypp_QP" in self.inputs and len(QP_list)>1:
+            return True
+
+        return False
+
+    def prepare_ypp_inputs_qp(self) -> AttributeDict:
+        """Prepare inputs for ypp."""
+        inputs = AttributeDict(self.exposed_inputs(YppRestart, namespace="ypp_QP"))
+
+        inputs.ypp.QP_calculations = self.ctx.wkchain_yambo_qp.outputs.splitted_QP_calculations
+        inputs.ypp.parent_folder = self.ctx.wkchain_yambo_qp.called[0].inputs.parent_folder
+
+        return inputs
+
+    def run_ypp_qp(self) -> ty.Dict:
+        """Run the ``YppRestart``."""
+        inputs = self.prepare_ypp_inputs_qp()
+
+        inputs.metadata.call_link_label = "ypp_QP"
+        inputs = prepare_process_inputs(YppRestart, inputs)
+        running = self.submit(YppRestart, **inputs)
+        self.report(f"launching {running.process_label}<{running.pk}>")
+
+        return ToContext(wkchain_ypp_QP=running)
+
+    def inspect_ypp_qp(  # pylint: disable=inconsistent-return-statements
+        self,
+    ) -> ty.Union[None, ExitCode]:
+        """Verify that the ``YppRestart`` successfully finished."""
+        wkchain = self.ctx.wkchain_ypp_QP
+
+        if not wkchain.is_finished_ok:
+            self.report(
+                f"{wkchain.process_label} failed with exit status {wkchain.exit_status}"
+            )
+            return self.exit_codes.ERROR_SUB_PROCESS_FAILED_YPP
+
 
     def should_run_wannier90_pp(self) -> bool:
         """Whether to run wannier."""
@@ -972,7 +1051,13 @@ class YamboWannier90WorkChain(
         """Prepare inputs for ypp."""
         inputs = AttributeDict(self.exposed_inputs(YppRestart, namespace="ypp"))
 
-        if self.should_run_yambo_qp():
+        if self.should_run_ypp_qp():
+            ypp_wkchain = self.ctx.wkchain_ypp_qp
+            # Working if merge is not needed
+            inputs.ypp.QP_DB = ypp_wkchain.outputs.QP_db
+            inputs.parent_folder = ypp_wkchain.outputs.remote_folder
+        
+        elif self.should_run_yambo_qp():
             yambo_wkchain = self.ctx.wkchain_yambo_qp
             # Working if merge is not needed
             inputs.ypp.QP_DB = yambo_wkchain.outputs.QP_db
