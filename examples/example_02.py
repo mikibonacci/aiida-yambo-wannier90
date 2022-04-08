@@ -7,9 +7,12 @@ import click
 
 from aiida import cmdline, orm
 
+from aiida_quantumespresso.workflows.pw.base import PwBaseWorkChain
+
 from aiida_wannier90_workflows.cli.params import RUN, FilteredWorkflowParamType
 from aiida_wannier90_workflows.utils.workflows.builder import (
     print_builder,
+    set_parallelization,
     submit_and_add_group,
 )
 from aiida_wannier90_workflows.utils.workflows.builder.generator import (
@@ -29,11 +32,10 @@ def submit(
     """
     builder = get_pwbands_builder(w90_wkchain)
 
-    builder["pw"]["parallelization"] = orm.Dict(
-        dict={
-            "npool": 8,
-        }
-    )
+    parallelization = {
+        "npool": 8,
+    }
+    set_parallelization(builder, parallelization, process_class=PwBaseWorkChain)
 
     print_builder(builder)
 

@@ -32,9 +32,11 @@ def submit(group: orm.Group = None, run: bool = False):
     # unsorted_eig = orm.SinglefileData(file=INPUT_DIR / "aiida.gw.unsorted.eig")
 
     code = orm.load_code("gw2wannier90@prnmarvelcompute5")
+
     w90_wkchain = orm.load_node(140073)  # Si
     parent_folder = w90_wkchain.outputs.wannier90.remote_folder
     nnkp = w90_wkchain.outputs.wannier90_pp.nnkp_file
+
     ypp_wkchain = orm.load_node(4048)
     unsorted_eig = ypp_wkchain.outputs.unsorted_eig_file
 

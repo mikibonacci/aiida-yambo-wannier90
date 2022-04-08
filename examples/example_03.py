@@ -7,10 +7,14 @@ import click
 
 from aiida import cmdline, orm
 
+from aiida_quantumespresso.workflows.pw.base import PwBaseWorkChain
+
 from aiida_wannier90_workflows.cli.params import RUN
 from aiida_wannier90_workflows.utils.kpoints import create_kpoints_from_mesh
 from aiida_wannier90_workflows.utils.workflows.builder import (
     print_builder,
+    set_kpoints,
+    set_parallelization,
     submit_and_add_group,
 )
 
@@ -52,8 +56,6 @@ def submit(group: orm.Group = None, run: bool = False):
             },
         },
     }
-
-    kpoints_nscf = create_kpoints_from_mesh(structure, [8, 8, 8])
 
     overrides_yambo = {
         "yambo": {
@@ -105,18 +107,14 @@ def submit(group: orm.Group = None, run: bool = False):
         # parent_folder=orm.load_node(225176).outputs.remote_folder,
     )
 
-    builder.nscf["kpoints"] = kpoints_nscf
+    kpoints_nscf = create_kpoints_from_mesh(structure, [8, 8, 8])
+    set_kpoints(builder.nscf, kpoints_nscf, process_class=PwBaseWorkChain)
 
-    builder["scf"]["pw"]["parallelization"] = orm.Dict(
-        dict={
-            "npool": 8,
-        }
-    )
-    builder["nscf"]["pw"]["parallelization"] = orm.Dict(
-        dict={
-            "npool": 8,
-        }
-    )
+    parallelization = {
+        "npool": 8,
+    }
+    set_parallelization(builder.scf, parallelization, process_class=PwBaseWorkChain)
+    set_parallelization(builder.nscf, parallelization, process_class=PwBaseWorkChain)
 
     # The gaps that you want
     # builder.additional_parsing = orm.List(

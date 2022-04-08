@@ -15,6 +15,8 @@ from aiida_wannier90_workflows.utils.kpoints import get_explicit_kpoints_from_me
 from aiida_wannier90_workflows.utils.structure import read_structure
 from aiida_wannier90_workflows.utils.workflows.builder import (
     print_builder,
+    set_kpoints,
+    set_num_bands,
     set_parallelization,
     submit_and_add_group,
 )
@@ -49,18 +51,11 @@ def submit(group: orm.Group = None, run: bool = False):
 
     # Use 4x4x4 kmesh
     kpoints = get_explicit_kpoints_from_mesh(structure, [4, 4, 4])
-    builder.wannier90.wannier90.kpoints = kpoints
-    builder.nscf.kpoints = kpoints
+    set_kpoints(builder, kpoints, process_class=Wannier90BandsWorkChain)
 
     # Change number of bands as example23
-    parameters = builder.nscf.pw.parameters.get_dict()
-    parameters["SYSTEM"]["nbnd"] = 14
-    builder.nscf.pw.parameters = orm.Dict(dict=parameters)
-    # Change wannier90 num_bands
-    parameters = builder.wannier90.wannier90.parameters.get_dict()
-    parameters["num_bands"] = 14
-    parameters["mp_grid"] = [4, 4, 4]
-    builder.wannier90.wannier90.parameters = orm.Dict(dict=parameters)
+    num_bands = 14
+    set_num_bands(builder, num_bands, process_class=Wannier90BandsWorkChain)
 
     # Set parallelization
     parallelization = {
@@ -69,7 +64,7 @@ def submit(group: orm.Group = None, run: bool = False):
         # 'npool': 8,
         # 'num_mpiprocs_per_machine': 48,
     }
-    builder = set_parallelization(builder, parallelization)
+    set_parallelization(builder, parallelization)
 
     print_builder(builder)
 
