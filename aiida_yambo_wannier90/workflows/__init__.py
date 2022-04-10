@@ -763,7 +763,7 @@ class YamboWannier90WorkChain(
 
     def prepare_yambo_commensurate_inputs(self) -> AttributeDict:
         """Prepare inputs for yambo commensurate."""
-        # Get and reruse the converged input from YamboWorkflow
+        # Get and reuse the converged input from YamboWorkflow
         converged_wkchain = get_yambo_converged_workchain(self.ctx.wkchain_yambo_conv)
         # pylint: disable=protected-access
         input_parameters = converged_wkchain.inputs._construct_attribute_dict(True)
@@ -776,6 +776,21 @@ class YamboWannier90WorkChain(
 
         # Use commensurate mesh
         inputs.nscf.kpoints = self.ctx.kpoints_gw
+
+        # Set parallelization, mpi_procs, npool, ...
+        # `inputs.yambo_qp` always exists, but `inputs.yambo` might be empty
+        if "scf" in inputs and "scf" in self.inputs.yambo_qp:
+            inputs.scf.pw.metadata = self.inputs.yambo_qp.scf.pw.metadata
+            if "parallelization" in self.inputs.yambo_qp.scf.pw:
+                inputs.scf.pw.parallelization = (
+                    self.inputs.yambo_qp.scf.pw.parallelization
+                )
+        if "pw" in inputs.nscf and "pw" in self.inputs.yambo_qp.nscf:
+            inputs.nscf.pw.metadata = self.inputs.yambo_qp.nscf.pw.metadata
+            if "parallelization" in self.inputs.yambo_qp.nscf.pw:
+                inputs.nscf.pw.parallelization = (
+                    self.inputs.yambo_qp.nscf.pw.parallelization
+                )
 
         return inputs
 
