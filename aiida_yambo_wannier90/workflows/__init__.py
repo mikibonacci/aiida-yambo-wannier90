@@ -174,6 +174,13 @@ class YamboWannier90WorkChain(
             default=lambda: orm.Bool(False),
             help="If `True` will force W90 to use the GW converged k-point mesh.",
         )
+        spec.input(
+            "sort_chk",
+            valid_type=orm.Bool,
+            serializer=orm.to_aiida_type,
+            default=lambda: orm.Bool(True),
+            help="If `True`, sort chk file in gw2wannier90, and restart wannier90_qp with the sorted chk.",
+        )
         spec.expose_inputs(
             YamboConvergence,
             namespace="yambo",
@@ -234,7 +241,10 @@ class YamboWannier90WorkChain(
         spec.expose_inputs(
             Gw2wannier90Calculation,
             namespace="gw2wannier90",
-            exclude=("clean_workdir",),
+            exclude=(
+                "clean_workdir",
+                "sort_chk",
+            ),
             namespace_options={
                 "help": "Inputs for the `Gw2wannier90Calculation`. ",
                 "required": False,
@@ -1094,6 +1104,9 @@ class YamboWannier90WorkChain(
         if self.should_run_ypp():
             inputs.unsorted_eig = self.ctx.wkchain_ypp.outputs.unsorted_eig_file
 
+        if self.inputs.sort_chk:
+            inputs.sort_chk = True
+
         return inputs
 
     def run_gw2wannier90(self) -> ty.Dict:
@@ -1151,7 +1164,10 @@ class YamboWannier90WorkChain(
                         params[key] = w90calc_params[key]
                 inputs.shift_energy_windows = False
 
-            inputs.wannier90.parameters = orm.Dict(dict=params)
+        if self.inputs.sort_chk:
+            params["restart"] = "plot"
+
+        inputs.wannier90.parameters = orm.Dict(dict=params)
 
         if self.should_run_gw2wannier90():
             inputs.wannier90.remote_input_folder = (
