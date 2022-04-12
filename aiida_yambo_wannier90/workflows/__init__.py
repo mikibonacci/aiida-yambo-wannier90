@@ -961,8 +961,8 @@ class YamboWannier90WorkChain(
         """Prepare inputs for ypp."""
         inputs = AttributeDict(self.exposed_inputs(YppRestart, namespace="ypp_QP"))
 
-        inputs.ypp_QP.QP_calculations = self.ctx.wkchain_yambo_qp.outputs.splitted_QP_calculations
-        inputs.ypp_QP.parent_folder = self.ctx.wkchain_yambo_qp.called[0].inputs.parent_folder
+        inputs.ypp.QP_calculations = self.ctx.wkchain_yambo_qp.outputs.splitted_QP_calculations
+        inputs.parent_folder = self.ctx.wkchain_yambo_qp.called[0].inputs.parent_folder
 
         return inputs
 
