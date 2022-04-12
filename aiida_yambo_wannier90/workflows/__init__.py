@@ -948,6 +948,9 @@ class YamboWannier90WorkChain(
     def should_run_ypp_qp(self) -> bool:
         """Whether to run ypp_QP."""
 
+        if "ypp_QP" in self.inputs:
+            if 'parent_folder' in self.inputs.ypp_QP: 
+                self.ctx.wkchain_yambo_qp = self.inputs.ypp_QP.outputs.remote_folder.creator.caller.caller
         QP_list = self.ctx.wkchain_yambo_qp.outputs.splitted_QP_calculations.get_list()
         if "ypp_QP" in self.inputs and len(QP_list)>1:
             return True
@@ -958,8 +961,8 @@ class YamboWannier90WorkChain(
         """Prepare inputs for ypp."""
         inputs = AttributeDict(self.exposed_inputs(YppRestart, namespace="ypp_QP"))
 
-        inputs.ypp.QP_calculations = self.ctx.wkchain_yambo_qp.outputs.splitted_QP_calculations
-        inputs.ypp.parent_folder = self.ctx.wkchain_yambo_qp.called[0].inputs.parent_folder
+        inputs.ypp_QP.QP_calculations = self.ctx.wkchain_yambo_qp.outputs.splitted_QP_calculations
+        inputs.ypp_QP.parent_folder = self.ctx.wkchain_yambo_qp.called[0].inputs.parent_folder
 
         return inputs
 
