@@ -5,6 +5,18 @@ repos:
   rev: v4.1.0
   hooks:
     - id: end-of-file-fixer
+      exclude: >-
+        (?x)^(
+            tests/.*.*out|
+            tests/.*.in|
+            examples/.*.cif|
+            examples/.*.amn|
+            examples/.*.mmn|
+            examples/.*.eig|
+            examples/.*.nnkp|
+            docs/.*.agr|
+            docs/.*.xsf
+        )$
     - id: mixed-line-ending
     - id: trailing-whitespace
       exclude: >-
