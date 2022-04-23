@@ -85,16 +85,14 @@ class Gw2wannier90Parser(Parser):
             except KeyError:
                 return self.exit(self.exit_codes.ERROR_NO_RETRIEVED_TEMPORARY_FOLDER)
 
-        filename = (
-            f"{self.node.process_class._DEFAULT_OUTPUT_SEEDNAME}.gw2wannier90.raw"
-        )
+        filename = f"{self.node.process_class._DEFAULT_OUTPUT_SEEDNAME}.gw2wannier90.raw"  # pylint: disable=protected-access
         if filename not in retrieve_temporary_list:
             return self.exit(self.exit_codes.ERROR_MISSING_OUTPUT_FILES)
 
         with open(pathlib.Path(retrieved_temporary_folder) / filename) as handle:
             filecontent = handle.readlines()
             sort_array = parse_gw2wannier90_raw(filecontent)
-            self.out(f"sort_index", sort_array)
+            self.out("sort_index", sort_array)
 
 
 def parse_gw2wannier90_out(filecontent: ty.List[str]) -> orm.Dict:
@@ -132,9 +130,19 @@ def parse_gw2wannier90_raw(filecontent: ty.List[str]) -> orm.ArrayData:
             read_index = False
         if read_index:
             line = line.strip()
-            line = removesuffix(removeprefix(line, "["), "]")
-            line = line.split()
-            sort_index.append([int(_) for _ in line])
+            if line.startswith("["):
+                row = removeprefix(line, "[")
+                if line.endswith("]"):
+                    row = removesuffix(row, "]")
+                    row = row.split()
+                    sort_index.append([int(_) for _ in row])
+                    continue
+            elif line.endswith("]"):
+                row += " " + removesuffix(line, "]")
+                row = row.split()
+                sort_index.append([int(_) for _ in row])
+            else:
+                row += " " + line
 
     sort_array = orm.ArrayData()
     sort_array.set_array("sort_index", np.array(sort_index))

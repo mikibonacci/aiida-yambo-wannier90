@@ -17,7 +17,6 @@ from aiida import cmdline, orm
 from aiida_wannier90_workflows.cli.params import RUN
 from aiida_wannier90_workflows.utils.workflows.builder import (
     print_builder,
-    set_parallelization,
     submit_and_add_group,
 )
 
@@ -28,13 +27,7 @@ def submit(group: orm.Group = None, run: bool = False):
     Run all the steps.
     """
     # pylint: disable=import-outside-toplevel
-    from aiida_quantumespresso.workflows.pw.base import PwBaseWorkChain
-
-    from aiida_wannier90_workflows.workflows.bands import Wannier90BandsWorkChain
-    from aiida_wannier90_workflows.workflows.base.wannier90 import (
-        Wannier90BaseWorkChain,
-    )
-
+    from aiida_yambo_wannier90.utils.builder import set_parallelization
     from aiida_yambo_wannier90.workflows import YamboWannier90WorkChain
 
     codes = {
@@ -99,7 +92,6 @@ def submit(group: orm.Group = None, run: bool = False):
     set_parallelization(
         builder["wannier90_qp"],
         parallelization=parallelization,
-        process_class=Wannier90BaseWorkChain,
     )
 
     print_builder(builder)

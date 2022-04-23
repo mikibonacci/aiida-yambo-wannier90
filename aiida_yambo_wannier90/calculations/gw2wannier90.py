@@ -57,6 +57,13 @@ class Gw2wannier90Calculation(CalcJob):
             required=False,
             help="The seedname.nnkp file.",
         )
+        spec.input(
+            "sort_chk",
+            valid_type=orm.Bool,
+            serializer=orm.to_aiida_type,
+            default=lambda: orm.Bool(False),
+            help="If `True`, also sort chk file.",
+        )
         spec.output(
             "output_parameters",
             valid_type=orm.Dict,
@@ -139,6 +146,8 @@ class Gw2wannier90Calculation(CalcJob):
             "mmn",
             "spn",
         ]
+        if self.inputs.sort_chk:
+            extensions += "chk"
 
         # symlink the input seedname.amn/mmn/... from a remote_folder
         # of Wannier90Calculation to aiida.unsorted.amn/mmn/...

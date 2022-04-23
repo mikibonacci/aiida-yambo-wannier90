@@ -1,0 +1,51 @@
+------------------------------
+##############################
+### gw2wannier90 interface ###
+##############################
+Started on 2022-04-08 16:23:28.944591
+Kpoints number: 64
+G0W0 QP corrections read from  unsorted/aiida.gw.unsorted.eig
+Adding GW QP corrections to KS eigenvalues
+Sorting
+GW eigenvalues sorted
+------------------------------
+writing aiida.eig
+aiida.eig  written.
+------------------------------
+
+----------
+ AMN module  
+----------
+Created on  8Apr2022 at 16:21:52
+----------
+ AMN  - OK 
+----------
+
+----------
+ MMN module  
+----------
+Created on  8Apr2022 at 16:21:52
+----------
+ MMN OK  
+----------
+
+----------
+ uHu module  
+----------
+WARNING: aiida.uHu not written :  [Errno 2] No such file or directory: 'unsorted/aiida.uHu'
+----------
+ uIu module  
+----------
+WARNING: aiida.uIu not written :  [Errno 2] No such file or directory: 'unsorted/aiida.uIu'
+----------
+ SPN module  
+----------
+WARNING: aiida.spn not written :  [Errno 2] No such file or directory: 'unsorted/aiida.spn'
+----------
+ UNK module  
+----------
+UNK files have been reordered, old files coming from DFT are available in UNK_DFT folder.
+----------
+ UNK OK  
+----------
+
