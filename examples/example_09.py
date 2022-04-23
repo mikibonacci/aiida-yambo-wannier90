@@ -82,6 +82,16 @@ def submit(group: orm.Group = None, run: bool = False):
         process_class=PwBaseWorkChain,
     )
     set_parallelization(
+        builder["yambo_qp"]["scf"],
+        parallelization=parallelization,
+        process_class=PwBaseWorkChain,
+    )
+    set_parallelization(
+        builder["yambo_qp"]["nscf"],
+        parallelization=parallelization,
+        process_class=PwBaseWorkChain,
+    )
+    set_parallelization(
         builder["wannier90"],
         parallelization=parallelization,
         process_class=Wannier90BandsWorkChain,
