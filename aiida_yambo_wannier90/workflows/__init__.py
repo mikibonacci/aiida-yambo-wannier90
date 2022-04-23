@@ -631,7 +631,10 @@ class YamboWannier90WorkChain(
             # the parent of `yambo_qp` is a converged mesh.
             # Since the workchain runs sequentially, the `yambo_qp` must be
             # in the workchain inputs.
-            parent_folder = self.inputs.yambo_qp.parent_folder
+            if 'yambo_qp' in self.inputs:
+                parent_folder = self.inputs.yambo_qp.parent_folder
+            elif 'ypp' in self.inputs:
+                parent_folder = self.inputs.ypp.parent_folder
             # The creator is a YamboCalculation, caller is a YamboRestart
             wkchain_gw = parent_folder.creator.caller
             # Its parent_folder is the remote_folder of a pw.x nscf
