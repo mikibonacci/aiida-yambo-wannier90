@@ -358,10 +358,10 @@ class YamboWannier90WorkChain(
                 cls.run_yambo_qp,
                 cls.inspect_yambo_qp,
             ),
-            if_(cls.should_run_ypp_qp)(
-                cls.run_ypp_qp,
-                cls.inspect_ypp_qp,
-            ),
+            #if_(cls.should_run_ypp_qp)(
+            #    cls.run_ypp_qp,
+            #    cls.inspect_ypp_qp,
+            #),
             if_(cls.should_run_wannier90_pp)(
                 cls.run_wannier90_pp,
                 cls.inspect_wannier90_pp,
@@ -794,7 +794,7 @@ class YamboWannier90WorkChain(
         input_parameters = converged_wkchain.inputs._construct_attribute_dict(True)
 
         inputs = AttributeDict(self.exposed_inputs(YamboWorkflow, namespace="yambo_qp"))
-
+        if 'QP_subset_dict' in inputs: del inputs.QP_subset_dict
         inputs.scf.pw.structure = self.ctx.current_structure
         inputs.nscf.pw.structure = self.ctx.current_structure
         inputs.yres.yambo.parameters = input_parameters.yres.yambo.parameters
@@ -951,9 +951,9 @@ class YamboWannier90WorkChain(
         if "ypp_QP" in self.inputs:
             if 'parent_folder' in self.inputs.ypp_QP: 
                 self.ctx.wkchain_yambo_qp = self.inputs.ypp_QP.outputs.remote_folder.creator.caller.caller
-        QP_list = self.ctx.wkchain_yambo_qp.outputs.splitted_QP_calculations.get_list()
-        if "ypp_QP" in self.inputs and len(QP_list)>1:
-            return True
+            QP_list = self.ctx.wkchain_yambo_qp.outputs.splitted_QP_calculations.get_list()
+            if len(QP_list)>1:
+                return True
 
         return False
 
@@ -1059,17 +1059,20 @@ class YamboWannier90WorkChain(
         """Prepare inputs for ypp."""
         inputs = AttributeDict(self.exposed_inputs(YppRestart, namespace="ypp"))
 
-        if self.should_run_ypp_qp():
-            ypp_wkchain = self.ctx.wkchain_ypp_qp
-            # Working if merge is not needed
-            inputs.ypp.QP_DB = ypp_wkchain.outputs.QP_db
-            inputs.parent_folder = ypp_wkchain.outputs.remote_folder
+        #if self.should_run_ypp_qp():
+        #    ypp_wkchain = self.ctx.wkchain_ypp_QP
+        #    # Working if merge is not needed
+        #    inputs.ypp.QP_DB = ypp_wkchain.outputs.QP_DB
+        #    inputs.parent_folder = ypp_wkchain.outputs.remote_folder
         
-        elif self.should_run_yambo_qp():
+        if self.should_run_yambo_qp():
             yambo_wkchain = self.ctx.wkchain_yambo_qp
             # Working if merge is not needed
-            inputs.ypp.QP_DB = yambo_wkchain.outputs.QP_db
-            inputs.parent_folder = yambo_wkchain.outputs.remote_folder
+            if 'merged_QP' in yambo_wkchain.outputs:
+                inputs.ypp.QP_DB = yambo_wkchain.outputs.merged_QP
+            else:
+                inputs.ypp.QP_DB = yambo_wkchain.outputs.QP_DB
+            inputs.parent_folder = self.ctx.wkchain_yambo_qp.called[0].inputs.parent_folder
 
         if self.should_run_wannier90_pp():
             inputs.ypp.nnkp_file = self.ctx.wkchain_wannier90_pp.outputs.nnkp_file
