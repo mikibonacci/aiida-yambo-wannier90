@@ -46,6 +46,7 @@ from aiida_yambo_wannier90.calculations.functions.kmesh import (
     kmapper,
 )
 from aiida_yambo_wannier90.calculations.gw2wannier90 import Gw2wannier90Calculation
+from aiida_yambo_wannier90.common.types import Gw2wannier90SortMode
 from aiida_yambo_wannier90.utils.workflows import (
     get_yambo_converged_workchain,
     get_yambo_nscf,
@@ -175,13 +176,6 @@ class YamboWannier90WorkChain(
             default=lambda: orm.Bool(False),
             help="If `True` will force W90 to use the GW converged k-point mesh.",
         )
-        spec.input(
-            "sort_chk",
-            valid_type=orm.Bool,
-            serializer=orm.to_aiida_type,
-            default=lambda: orm.Bool(True),
-            help="If `True`, sort chk file in gw2wannier90, and restart wannier90_qp with the sorted chk.",
-        )
         spec.expose_inputs(
             YamboConvergence,
             namespace="yambo",
@@ -253,10 +247,7 @@ class YamboWannier90WorkChain(
         spec.expose_inputs(
             Gw2wannier90Calculation,
             namespace="gw2wannier90",
-            exclude=(
-                "clean_workdir",
-                "sort_chk",
-            ),
+            exclude=("clean_workdir",),
             namespace_options={
                 "help": "Inputs for the `Gw2wannier90Calculation`. ",
                 "required": False,
@@ -368,10 +359,10 @@ class YamboWannier90WorkChain(
                 cls.run_yambo_qp,
                 cls.inspect_yambo_qp,
             ),
-            #if_(cls.should_run_ypp_qp)(
+            # if_(cls.should_run_ypp_qp)(
             #    cls.run_ypp_qp,
             #    cls.inspect_ypp_qp,
-            #),
+            # ),
             if_(cls.should_run_wannier90_pp)(
                 cls.run_wannier90_pp,
                 cls.inspect_wannier90_pp,
@@ -578,14 +569,16 @@ class YamboWannier90WorkChain(
         inputs["ypp"] = ypp_builder._inputs(prune=True)
         inputs["ypp"].pop("clean_workdir", None)
 
-        #ypp_QP
+        # ypp_QP
         ypp_builder = YppRestart.get_builder_from_protocol(
             code=codes["ypp"],
             protocol="merge_QP",
         )
 
         inputs["ypp_QP"] = ypp_builder._inputs(prune=True)
-        inputs["ypp_QP"].pop("clean_workdir", None) #but actually I want to clean the wdir
+        inputs["ypp_QP"].pop(
+            "clean_workdir", None
+        )  # but actually I want to clean the wdir
 
         # Prepare gw2wannier90
         inputs["gw2wannier90"] = {
@@ -807,7 +800,8 @@ class YamboWannier90WorkChain(
         input_parameters = converged_wkchain.inputs._construct_attribute_dict(True)
 
         inputs = AttributeDict(self.exposed_inputs(YamboWorkflow, namespace="yambo_qp"))
-        if 'QP_subset_dict' in inputs: del inputs.QP_subset_dict
+        if "QP_subset_dict" in inputs:
+            del inputs.QP_subset_dict
         inputs.scf.pw.structure = self.ctx.current_structure
         inputs.nscf.pw.structure = self.ctx.current_structure
         inputs.yres.yambo.parameters = input_parameters.yres.yambo.parameters
@@ -820,11 +814,15 @@ class YamboWannier90WorkChain(
         if "scf" in inputs and "scf" in self.inputs.yambo_qp:
             inputs.scf.pw.metadata = self.inputs.yambo_qp.scf.pw.metadata
             if "parallelization" in self.inputs.yambo_qp.scf.pw:
-                inputs.scf.pw.parallelization = self.inputs.yambo_qp.scf.pw.parallelization
+                inputs.scf.pw.parallelization = (
+                    self.inputs.yambo_qp.scf.pw.parallelization
+                )
         if "pw" in inputs.nscf and "pw" in self.inputs.yambo_qp.nscf:
             inputs.nscf.pw.metadata = self.inputs.yambo_qp.nscf.pw.metadata
             if "parallelization" in self.inputs.yambo_qp.nscf.pw:
-                inputs.nscf.pw.parallelization = self.inputs.yambo_qp.nscf.pw.parallelization
+                inputs.nscf.pw.parallelization = (
+                    self.inputs.yambo_qp.nscf.pw.parallelization
+                )
 
         return inputs
 
@@ -862,6 +860,7 @@ class YamboWannier90WorkChain(
 
     def prepare_yambo_qp_inputs(self) -> AttributeDict:
         """Prepare inputs for yambo QP."""
+        # pylint: disable=too-many-locals
         # Get the converged input from YamboWorkflow
         inputs = AttributeDict(self.exposed_inputs(YamboWorkflow, namespace="yambo_qp"))
         yambo_params = inputs.yres.yambo.parameters.get_dict()
@@ -917,18 +916,20 @@ class YamboWannier90WorkChain(
         qpkrange = qpkrange.get_list()
 
         # Set QPkrange in GW parameters
-        #yambo_params["variables"]["QPkrange"] = [qpkrange, ""]
+        # yambo_params["variables"]["QPkrange"] = [qpkrange, ""]
 
         # To be set from input
-        if not hasattr(inputs,'QP_subset_dict'):
-            inputs.QP_subset_dict = orm.Dict(dict={
-                                        'qp_per_subset':50,
-                                        'parallel_runs':4,
-                                        'explicit':qpkrange,
-                                    })
+        if not hasattr(inputs, "QP_subset_dict"):
+            inputs.QP_subset_dict = orm.Dict(
+                dict={
+                    "qp_per_subset": 50,
+                    "parallel_runs": 4,
+                    "explicit": qpkrange,
+                }
+            )
         else:
-            QP_subset_dict = inputs.QP_subset_dict.get_dict() 
-            QP_subset_dict['explicit'] = qpkrange
+            QP_subset_dict = inputs.QP_subset_dict.get_dict()
+            QP_subset_dict["explicit"] = qpkrange
             inputs.QP_subset_dict = orm.Dict(dict=QP_subset_dict)
 
         inputs.scf.pw.structure = self.ctx.current_structure
@@ -973,10 +974,14 @@ class YamboWannier90WorkChain(
         """Whether to run ypp_QP."""
 
         if "ypp_QP" in self.inputs:
-            if 'parent_folder' in self.inputs.ypp_QP: 
-                self.ctx.wkchain_yambo_qp = self.inputs.ypp_QP.outputs.remote_folder.creator.caller.caller
-            QP_list = self.ctx.wkchain_yambo_qp.outputs.splitted_QP_calculations.get_list()
-            if len(QP_list)>1:
+            if "parent_folder" in self.inputs.ypp_QP:
+                self.ctx.wkchain_yambo_qp = (
+                    self.inputs.ypp_QP.outputs.remote_folder.creator.caller.caller
+                )
+            QP_list = (
+                self.ctx.wkchain_yambo_qp.outputs.splitted_QP_calculations.get_list()
+            )
+            if len(QP_list) > 1:
                 return True
 
         return False
@@ -985,7 +990,9 @@ class YamboWannier90WorkChain(
         """Prepare inputs for ypp."""
         inputs = AttributeDict(self.exposed_inputs(YppRestart, namespace="ypp_QP"))
 
-        inputs.ypp.QP_calculations = self.ctx.wkchain_yambo_qp.outputs.splitted_QP_calculations
+        inputs.ypp.QP_calculations = (
+            self.ctx.wkchain_yambo_qp.outputs.splitted_QP_calculations
+        )
         inputs.parent_folder = self.ctx.wkchain_yambo_qp.called[0].inputs.parent_folder
 
         return inputs
@@ -1012,7 +1019,6 @@ class YamboWannier90WorkChain(
                 f"{wkchain.process_label} failed with exit status {wkchain.exit_status}"
             )
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_YPP
-
 
     def should_run_wannier90_pp(self) -> bool:
         """Whether to run wannier."""
@@ -1083,20 +1089,22 @@ class YamboWannier90WorkChain(
         """Prepare inputs for ypp."""
         inputs = AttributeDict(self.exposed_inputs(YppRestart, namespace="ypp"))
 
-        #if self.should_run_ypp_qp():
+        # if self.should_run_ypp_qp():
         #    ypp_wkchain = self.ctx.wkchain_ypp_QP
         #    # Working if merge is not needed
         #    inputs.ypp.QP_DB = ypp_wkchain.outputs.QP_DB
         #    inputs.parent_folder = ypp_wkchain.outputs.remote_folder
-        
+
         if self.should_run_yambo_qp():
             yambo_wkchain = self.ctx.wkchain_yambo_qp
             # Working if merge is not needed
-            if 'merged_QP' in yambo_wkchain.outputs:
+            if "merged_QP" in yambo_wkchain.outputs:
                 inputs.ypp.QP_DB = yambo_wkchain.outputs.merged_QP
             else:
                 inputs.ypp.QP_DB = yambo_wkchain.outputs.QP_DB
-            inputs.parent_folder = self.ctx.wkchain_yambo_qp.called[0].inputs.parent_folder
+            inputs.parent_folder = self.ctx.wkchain_yambo_qp.called[
+                0
+            ].inputs.parent_folder
 
         if self.should_run_wannier90_pp():
             inputs.ypp.nnkp_file = self.ctx.wkchain_wannier90_pp.outputs.nnkp_file
@@ -1194,9 +1202,6 @@ class YamboWannier90WorkChain(
         if self.should_run_ypp():
             inputs.unsorted_eig = self.ctx.wkchain_ypp.outputs.unsorted_eig_file
 
-        if self.inputs.sort_chk:
-            inputs.sort_chk = True
-
         return inputs
 
     def run_gw2wannier90(self) -> ty.Dict:
@@ -1254,7 +1259,10 @@ class YamboWannier90WorkChain(
                         params[key] = w90calc_params[key]
                 inputs.shift_energy_windows = False
 
-        if self.inputs.sort_chk:
+        if self.inputs.gw2wannier90.sort_mode in [
+            Gw2wannier90SortMode.DEFAULT_AND_CHK,
+            Gw2wannier90SortMode.NO_SORT,
+        ]:
             params["restart"] = "plot"
 
         inputs.wannier90.parameters = orm.Dict(dict=params)

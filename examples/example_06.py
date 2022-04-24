@@ -73,6 +73,7 @@ def submit(group: orm.Group = None, run: bool = False):
     del builder["yambo"]
     del builder["yambo_qp"]
     del builder["ypp"]
+    del builder["ypp_QP"]
 
     # Silicon, reuse the inputs of a finished Gw2wannier90Calculation.
     gw2wan_calc = orm.load_node(140301)
@@ -83,6 +84,11 @@ def submit(group: orm.Group = None, run: bool = False):
     # unsorted_eig = ypp_wkchain.outputs.unsorted_eig_file
 
     builder["gw2wannier90"]["unsorted_eig"] = unsorted_eig
+
+    from aiida_yambo_wannier90.common.types import Gw2wannier90SortMode
+
+    # builder["gw2wannier90"]["sort_mode"] = Gw2wannier90SortMode.DEFAULT
+    builder["gw2wannier90"]["sort_mode"] = Gw2wannier90SortMode.DEFAULT_AND_CHK
 
     # Set `bands_kpoints` to skip seekpath step in YamboWannier90WorkChain
     builder.bands_kpoints = get_kpoints_from_bands(w90_wkchain.outputs.band_structure)

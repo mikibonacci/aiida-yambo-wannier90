@@ -9,6 +9,8 @@ from aiida_wannier90.calculations import Wannier90Calculation
 
 from aiida_wannier90_workflows.utils.str import removesuffix
 
+from aiida_yambo_wannier90.common.types import Gw2wannier90SortMode
+
 
 class Gw2wannier90Calculation(CalcJob):
     """
@@ -58,11 +60,11 @@ class Gw2wannier90Calculation(CalcJob):
             help="The seedname.nnkp file.",
         )
         spec.input(
-            "sort_chk",
-            valid_type=orm.Bool,
+            "sort_mode",
+            valid_type=orm.Int,
             serializer=orm.to_aiida_type,
-            default=lambda: orm.Bool(False),
-            help="If `True`, also sort chk file.",
+            default=lambda: orm.Int(Gw2wannier90SortMode.NO_SORT),
+            help="Modes to sort amn/mmn/eig/chk/... files.",
         )
         spec.output(
             "output_parameters",
@@ -72,7 +74,7 @@ class Gw2wannier90Calculation(CalcJob):
         spec.output(
             "sort_index",
             valid_type=orm.ArrayData,
-            help="Sort index.",
+            help="Sort index. Note even if sort_mode=NO_SORT, the sort_index is also parsed.",
         )
 
         spec.exit_code(
@@ -108,6 +110,8 @@ class Gw2wannier90Calculation(CalcJob):
             self._DEFAULT_OUTPUT_SEEDNAME,
             f"{self._DEFAULT_INPUT_FOLDER}/{w90_default_seedname}",
         ]
+        if self.inputs.sort_mode == Gw2wannier90SortMode.NO_SORT:
+            cmdline_params.insert(0, "--no_sort")
         codeinfo.cmdline_params = cmdline_params
         codeinfo.code_uuid = self.inputs.code.uuid
         codeinfo.stdout_name = self.metadata.options.output_filename
@@ -140,17 +144,16 @@ class Gw2wannier90Calculation(CalcJob):
         calcinfo.local_copy_list = local_copy_list
 
         # Files to be sorted by gw2wannier90
-        extensions = [
-            "eig",
-            "amn",
-            "mmn",
-            "spn",
-        ]
-        if self.inputs.sort_chk:
-            extensions += "chk"
+        if self.inputs.sort_mode == Gw2wannier90SortMode.DEFAULT:
+            extensions = ["eig", "amn", "mmn", "spn"]
+        elif self.inputs.sort_mode == Gw2wannier90SortMode.DEFAULT_AND_CHK:
+            extensions = ["eig", "amn", "mmn", "spn", "chk"]
+        elif self.inputs.sort_mode == Gw2wannier90SortMode.NO_SORT:
+            # Only symlink eig to unsorted/aiida.eig
+            extensions = ["eig"]
 
-        # symlink the input seedname.amn/mmn/... from a remote_folder
-        # of Wannier90Calculation to aiida.unsorted.amn/mmn/...
+        # symlink the input seedname.[amn|mmn|...] from a remote_folder
+        # of Wannier90Calculation to unsorted/aiida.[amn|mmn|...]
         remote_path = pathlib.Path(self.inputs.parent_folder.get_remote_path())
         remote_symlink_list = []
         existed_files = self.inputs.parent_folder.listdir()
@@ -167,6 +170,22 @@ class Gw2wannier90Calculation(CalcJob):
                     f"{self._DEFAULT_INPUT_FOLDER}/{filename}",
                 )
             )
+        if self.inputs.sort_mode == Gw2wannier90SortMode.NO_SORT:
+            # These files are not changed, symlink to workdir (for w90 restart)
+            extensions = ["amn", "mmn", "spn", "chk"]
+            for ext in extensions:
+                filename = f"{w90_default_seedname}.{ext}"
+
+                if filename not in existed_files:
+                    continue
+
+                remote_symlink_list.append(
+                    (
+                        self.inputs.parent_folder.computer.uuid,
+                        str(remote_path / filename),
+                        filename,
+                    )
+                )
         calcinfo.remote_symlink_list = remote_symlink_list
 
         calcinfo.retrieve_temporary_list = [

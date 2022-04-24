@@ -22,12 +22,12 @@
 # Updated on October 7th, 2019 by Junfeng Qiao (qiaojunfeng@outlook.com)
 #
 import argparse
-import subprocess
+from dataclasses import dataclass
 import datetime
 import glob
 import os
 import shutil
-from dataclasses import dataclass
+import subprocess
 
 import numpy as np
 from scipy.io import FortranFile
@@ -79,6 +79,11 @@ To generate formatted files with unformatted input, use option:
             "If nothing provided, all files will be converted."
         ),
     )
+    parser.add_argument(
+        "--no_sort",
+        action="store_true",
+        help="No sorting, only add GW corrections to eig.",
+    )
 
     parsed_args = parser.parse_args(args)
 
@@ -101,6 +106,7 @@ def get_path_to_executable(executable: str) -> str:
 @dataclass
 class Chk:
     """Class for storing matrices in seedname.chk file."""
+
     header: str = None
     num_bands: int = None
     num_exclude_bands: int = None
@@ -241,33 +247,33 @@ def read_chk(filename: str, formatted: bool = None, keep_temp: bool = False) -> 
     filename = pathlib.Path(filename)
 
     if formatted is None:
-        if filename.name.endswith('.chk'):
+        if filename.name.endswith(".chk"):
             formatted = False
-        elif filename.name.endswith('.chk.fmt'):
+        elif filename.name.endswith(".chk.fmt"):
             formatted = True
         else:
-            raise ValueError(f'Cannot detect the format of {filename}')
+            raise ValueError(f"Cannot detect the format of {filename}")
 
-    valid_exts = ['.chk', '.chk.fmt']
+    valid_exts = [".chk", ".chk.fmt"]
     for ext in valid_exts:
         if filename.name.endswith(ext):
-            seedname = filename.name[:-len(ext)]
+            seedname = filename.name[: -len(ext)]
             break
     else:
         raise ValueError(f"{filename} not ends with {valid_exts}?")
 
     if not formatted:
-        w90chk2chk = get_path_to_executable('w90chk2chk.x')
-        tmpdir = pathlib.Path(tempfile.mkdtemp(dir='.'))
+        w90chk2chk = get_path_to_executable("w90chk2chk.x")
+        tmpdir = pathlib.Path(tempfile.mkdtemp(dir="."))
         # cd tmpdir so that `w90chk2chk.log` is inside tmpdir
         os.chdir(tmpdir)
-        if filename.root == '/':
+        if filename.root == "/":
             os.symlink(filename, filename.name)
         else:
             os.symlink(pathlib.Path("..") / filename, filename.name)
-        call_args = [w90chk2chk, '-export', str(seedname)]
+        call_args = [w90chk2chk, "-export", str(seedname)]
         # Some times need mpirun -n 1
-        call_args = ['/opt/intel/oneapi/mpi/2021.4.0/bin/mpirun', '-n', '1'] + call_args
+        # call_args = ['mpirun', '-n', '1'] + call_args
         subprocess.check_call(call_args)
         os.chdir("..")
         filename_fmt = f"{tmpdir / filename.name}.fmt"
@@ -326,21 +332,27 @@ def read_chk(filename: str, formatted: bool = None, keep_temp: bool = False) -> 
             for ik in range(chk.num_kpts):
                 chk.ndimwin[ik] = int(handle.readline().strip())
             #
-            chk.u_matrix_opt = np.zeros((chk.num_bands, chk.num_wann, chk.num_kpts), dtype=complex)
+            chk.u_matrix_opt = np.zeros(
+                (chk.num_bands, chk.num_wann, chk.num_kpts), dtype=complex
+            )
             for ik in range(chk.num_kpts):
                 for iw in range(chk.num_wann):
                     for ib in range(chk.num_bands):
                         line = [float(_) for _ in handle.readline().strip().split()]
                         chk.u_matrix_opt[ib, iw, ik] = line[0] + 1j * line[1]
         #
-        chk.u_matrix = np.zeros((chk.num_wann, chk.num_wann, chk.num_kpts), dtype=complex)
+        chk.u_matrix = np.zeros(
+            (chk.num_wann, chk.num_wann, chk.num_kpts), dtype=complex
+        )
         for ik in range(chk.num_kpts):
             for iw in range(chk.num_wann):
                 for ib in range(chk.num_wann):
                     line = [float(_) for _ in handle.readline().strip().split()]
                     chk.u_matrix[ib, iw, ik] = line[0] + 1j * line[1]
         #
-        chk.m_matrix = np.zeros((chk.num_wann, chk.num_wann, chk.nntot, chk.num_kpts), dtype=complex)
+        chk.m_matrix = np.zeros(
+            (chk.num_wann, chk.num_wann, chk.nntot, chk.num_kpts), dtype=complex
+        )
         for ik in range(chk.num_kpts):
             for inn in range(chk.nntot):
                 for iw in range(chk.num_wann):
@@ -350,7 +362,9 @@ def read_chk(filename: str, formatted: bool = None, keep_temp: bool = False) -> 
         #
         chk.wannier_centres = np.zeros((3, chk.num_wann), dtype=float)
         for iw in range(chk.num_wann):
-            chk.wannier_centres[:, iw] = [float(_) for _ in handle.readline().strip().split()]
+            chk.wannier_centres[:, iw] = [
+                float(_) for _ in handle.readline().strip().split()
+            ]
         #
         chk.wannier_spreads = np.zeros(chk.num_wann, dtype=float)
         for iw in range(chk.num_wann):
@@ -441,7 +455,9 @@ def read_chk(filename: str, formatted: bool = None, keep_temp: bool = False) -> 
     return chk
 
 
-def write_chk(chk: Chk, filename: str, formatted: bool = None, keep_temp: bool = False) -> None:
+def write_chk(
+    chk: Chk, filename: str, formatted: bool = None, keep_temp: bool = False
+) -> None:
     """Write chk file.
 
     :param chk: _description_
@@ -460,89 +476,89 @@ def write_chk(chk: Chk, filename: str, formatted: bool = None, keep_temp: bool =
     filename = pathlib.Path(filename)
 
     if formatted is None:
-        if filename.name.endswith('.chk'):
+        if filename.name.endswith(".chk"):
             formatted = False
-        elif filename.name.endswith('.chk.fmt'):
+        elif filename.name.endswith(".chk.fmt"):
             formatted = True
         else:
-            raise ValueError(f'Cannot detect the format of {filename}')
+            raise ValueError(f"Cannot detect the format of {filename}")
 
-    valid_exts = ['.chk', '.chk.fmt']
+    valid_exts = [".chk", ".chk.fmt"]
     for ext in valid_exts:
         if filename.name.endswith(ext):
-            seedname = filename.name[:-len(ext)]
+            seedname = filename.name[: -len(ext)]
             break
     else:
         raise ValueError(f"{filename} not ends with {valid_exts}?")
 
     if not formatted:
-        tmpdir = pathlib.Path(tempfile.mkdtemp(dir='.'))
+        tmpdir = pathlib.Path(tempfile.mkdtemp(dir="."))
         filename_fmt = f"{tmpdir / filename.name}.fmt"
     else:
         filename_fmt = filename
 
-     # Write formatted chk file
-    with open(filename_fmt, 'w') as handle:
+    # Write formatted chk file
+    with open(filename_fmt, "w") as handle:
         #
-        handle.write(f'{chk.header}\n')
+        handle.write(f"{chk.header}\n")
         #
-        handle.write(f'{chk.num_bands}\n')
+        handle.write(f"{chk.num_bands}\n")
         #
-        handle.write(f'{chk.num_exclude_bands}\n')
+        handle.write(f"{chk.num_exclude_bands}\n")
         #
         if chk.num_exclude_bands > 0:
             line = " ".join([str(_) for _ in chk.exclude_bands])
-            handle.write(f'{line}\n')
+            handle.write(f"{line}\n")
         # Just store as a 1D array
         line = " ".join([f"{_:22.16f}" for _ in chk.real_lattice])
-        handle.write(f'{line}\n')
+        handle.write(f"{line}\n")
         #
         line = " ".join([f"{_:22.16f}" for _ in chk.recip_lattice])
-        handle.write(f'{line}\n')
+        handle.write(f"{line}\n")
         #
-        handle.write(f'{chk.num_kpts}\n')
+        handle.write(f"{chk.num_kpts}\n")
         #
         line = " ".join([f"{_}" for _ in chk.mp_grid])
-        handle.write(f'{line}\n')
+        handle.write(f"{line}\n")
         #
         for ik in range(chk.num_kpts):
             line = " ".join([f"{_:22.16f}" for _ in chk.kpt_latt[:, ik]])
-            handle.write(f'{line}\n')
+            handle.write(f"{line}\n")
         #
-        handle.write(f'{chk.nntot}\n')
+        handle.write(f"{chk.nntot}\n")
         #
-        handle.write(f'{chk.num_wann}\n')
+        handle.write(f"{chk.num_wann}\n")
         #
-        handle.write(f'{chk.checkpoint}\n')
+        handle.write(f"{chk.checkpoint}\n")
         # 1 -> True, 0 -> False
         line = 1 if chk.have_disentangled else 0
-        handle.write(f'{line}\n')
+        handle.write(f"{line}\n")
         if chk.have_disentangled:
             #
-            handle.write(f'{chk.omega_invariant:22.16f}\n')
+            handle.write(f"{chk.omega_invariant:22.16f}\n")
             #
             for ik in range(chk.num_kpts):
                 for ib in range(chk.num_bands):
                     # 1 -> True, 0 -> False
                     line = 1 if chk.lwindow[ib, ik] else 0
-                    handle.write(f'{line}\n')
+                    handle.write(f"{line}\n")
             #
             for ik in range(chk.num_kpts):
-                handle.write(f'{chk.ndimwin[ik]}\n')
+                handle.write(f"{chk.ndimwin[ik]}\n")
             #
             for ik in range(chk.num_kpts):
                 for iw in range(chk.num_wann):
                     for ib in range(chk.num_bands):
                         line = chk.u_matrix_opt[ib, iw, ik]
                         line = " ".join([f"{_:22.16f}" for _ in [line.real, line.imag]])
-                        handle.write(f'{line}\n')
+                        handle.write(f"{line}\n")
         #
         for ik in range(chk.num_kpts):
             for iw in range(chk.num_wann):
                 for ib in range(chk.num_wann):
                     line = chk.u_matrix[ib, iw, ik]
                     line = " ".join([f"{_:22.16f}" for _ in [line.real, line.imag]])
-                    handle.write(f'{line}\n')
+                    handle.write(f"{line}\n")
         #
         for ik in range(chk.num_kpts):
             for inn in range(chk.nntot):
@@ -550,23 +566,23 @@ def write_chk(chk: Chk, filename: str, formatted: bool = None, keep_temp: bool =
                     for ib in range(chk.num_wann):
                         line = chk.m_matrix[ib, iw, inn, ik]
                         line = " ".join([f"{_:22.16f}" for _ in [line.real, line.imag]])
-                        handle.write(f'{line}\n')
+                        handle.write(f"{line}\n")
         #
         for iw in range(chk.num_wann):
             line = " ".join([f"{_:22.16f}" for _ in chk.wannier_centres[:, iw]])
-            handle.write(f'{line}\n')
+            handle.write(f"{line}\n")
         #
         for iw in range(chk.num_wann):
             line = f"{chk.wannier_spreads[iw]:22.16f}"
-            handle.write(f'{line}\n')
+            handle.write(f"{line}\n")
 
     if not formatted:
-        w90chk2chk = get_path_to_executable('w90chk2chk.x')
+        w90chk2chk = get_path_to_executable("w90chk2chk.x")
         # cd tmpdir so that `w90chk2chk.log` is inside tmpdir
         os.chdir(tmpdir)
-        call_args = [w90chk2chk, '-import', str(seedname)]
+        call_args = [w90chk2chk, "-import", str(seedname)]
         # Some times need mpirun -n 1
-        call_args = ['/opt/intel/oneapi/mpi/2021.4.0/bin/mpirun', '-n', '1'] + call_args
+        # call_args = ['mpirun', '-n', '1'] + call_args
         subprocess.check_call(call_args)
         os.chdir("..")
         shutil.copy(tmpdir / f"{seedname}.chk", filename.name)
@@ -587,9 +603,9 @@ def reorder_chk(seedname_in: str, seedname_out: str, bandsort: np.ndarray) -> No
     chk = read_chk(filename_in, formatted=False)
 
     if chk.num_exclude_bands > 0:
-        # chk.exclude_bands = 
+        # chk.exclude_bands =
         raise NotImplementedError("does not support exclude bands")
-    
+
     if chk.have_disentangled:
         for ik in range(chk.num_kpts):
             chk.lwindow[:, ik] = chk.lwindow[bandsort[ik], ik]
@@ -608,28 +624,30 @@ def _test_chk():
 
     from gw2wannier90 import read_chk, write_chk
 
-    PATH = os.environ['PATH']
-    w90_path = '/home/jqiao/git/wannier90'
-    os.environ['PATH'] = f"{w90_path}:{PATH}"
+    PATH = os.environ["PATH"]
+    w90_path = "/home/jqiao/git/wannier90"
+    os.environ["PATH"] = f"{w90_path}:{PATH}"
 
-    LD_LIBRARY_PATH = os.environ.get('LD_LIBRARY_PATH', '')
-    mkl_path = '/opt/intel/oneapi/mpi/2021.4.0/libfabric/lib:/opt/intel/oneapi/mpi/2021.4.0/lib/release:/opt/intel/oneapi/mpi/2021.4.0/lib:/opt/intel/oneapi/mkl/2021.4.0/lib/intel64:/opt/intel/oneapi/compiler/2021.4.0/linux/lib:/opt/intel/oneapi/compiler/2021.4.0/linux/lib/x64:/opt/intel/oneapi/compiler/2021.4.0/linux/lib/emu:/opt/intel/oneapi/compiler/2021.4.0/linux/compiler/lib/intel64_lin'
-    os.environ['LD_LIBRARY_PATH'] = f"{mkl_path}:{LD_LIBRARY_PATH}"
+    LD_LIBRARY_PATH = os.environ.get("LD_LIBRARY_PATH", "")
+    mkl_path = "/opt/intel/oneapi/mpi/2021.4.0/libfabric/lib:/opt/intel/oneapi/mpi/2021.4.0/lib/release:/opt/intel/oneapi/mpi/2021.4.0/lib:/opt/intel/oneapi/mkl/2021.4.0/lib/intel64:/opt/intel/oneapi/compiler/2021.4.0/linux/lib:/opt/intel/oneapi/compiler/2021.4.0/linux/lib/x64:/opt/intel/oneapi/compiler/2021.4.0/linux/lib/emu:/opt/intel/oneapi/compiler/2021.4.0/linux/compiler/lib/intel64_lin"
+    os.environ["LD_LIBRARY_PATH"] = f"{mkl_path}:{LD_LIBRARY_PATH}"
 
     curdir = pathlib.Path(__file__).parent
 
-    chk = read_chk(curdir / 'read_chk/silicon.chk')
+    chk = read_chk(curdir / "read_chk/silicon.chk")
 
-    write_chk(chk, curdir / 'osilicon.chk.fmt', formatted=True)
+    write_chk(chk, curdir / "osilicon.chk.fmt", formatted=True)
 
-    chk2 = read_chk(curdir / 'osilicon.chk.fmt')
+    chk2 = read_chk(curdir / "osilicon.chk.fmt")
 
-    write_chk(chk2, curdir / 'osilicon.chk')
+    write_chk(chk2, curdir / "osilicon.chk")
 
     print(chk == chk2)
 
 
-def gw2wannier90(seedname: str, seednameGW: str, targets: list) -> None:
+def gw2wannier90(
+    seedname: str, seednameGW: str, targets: list, no_sort: bool = False
+) -> None:
     print("------------------------------")
     print("##############################")
     print("### gw2wannier90 interface ###")
@@ -665,6 +683,15 @@ def gw2wannier90(seedname: str, seednameGW: str, targets: list) -> None:
         calcMMN = True
     if calcUIU:
         calcMMN = True
+
+    if no_sort:
+        calcAMN = False
+        calcMMN = False
+        calcUHU = False
+        calcUIU = False
+        calcSPN = False
+        calcUNK = False
+        calcCHK = False
 
     # Here we open a file to dump all the intermediate steps (mainly for debugging)
     f_raw = open(seednameGW + ".gw2wannier90.raw", "w")
@@ -780,26 +807,32 @@ def gw2wannier90(seedname: str, seednameGW: str, targets: list) -> None:
         f_raw.write(str(line) + "\n")
     f_raw.write("------------------------------\n")
 
-    print("Sorting")
+    if no_sort:
+        print("No sorting")
+    else:
+        print("Sorting")
     bsort = np.array([np.argsort(eigenDFTGW[ik, :]) for ik in range(NKPT)])
 
+    # Even if no_sort, I still output sorting list for reference
     f_raw.write("------------------------------\n")
     f_raw.write("Writing sorting list\n")
     for line in bsort:
         f_raw.write(str(line) + "\n")
     f_raw.write("------------------------------\n")
 
-    eigenDE = np.array([eigenDE[ik][bsort[ik]] for ik in range(NKPT)])
-    eigenDFTGW = np.array([eigenDFTGW[ik][bsort[ik]] for ik in range(NKPT)])
-    BANDSORT = np.array([np.array(providedGW)[bsort[ik]] for ik in range(NKPT)])
+    if not no_sort:
+        eigenDE = np.array([eigenDE[ik][bsort[ik]] for ik in range(NKPT)])
+        eigenDFTGW = np.array([eigenDFTGW[ik][bsort[ik]] for ik in range(NKPT)])
+        BANDSORT = np.array([np.array(providedGW)[bsort[ik]] for ik in range(NKPT)])
 
-    f_raw.write("------------------------------\n")
-    f_raw.write("Writing sorted GW eigenvalues\n")
-    for line in eigenDFTGW:
-        f_raw.write(str(line) + "\n")
-    f_raw.write("------------------------------\n")
+        f_raw.write("------------------------------\n")
+        f_raw.write("Writing sorted GW eigenvalues\n")
+        for line in eigenDFTGW:
+            f_raw.write(str(line) + "\n")
+        f_raw.write("------------------------------\n")
 
-    print("GW eigenvalues sorted")
+        print("GW eigenvalues sorted")
+
     # print eigenDFT
     print("------------------------------")
     print("writing " + seednameGW + ".eig")
@@ -1165,4 +1198,4 @@ if __name__ == "__main__":
         targets = args.extensions.split(",")
         targets = [s.lower() for s in targets]  # options read from command line
 
-    gw2wannier90(seedname, seednameGW, targets)
+    gw2wannier90(seedname, seednameGW, targets, args.no_sort)
