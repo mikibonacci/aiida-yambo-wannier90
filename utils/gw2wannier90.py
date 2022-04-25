@@ -292,8 +292,11 @@ def read_chk(filename: str, formatted: bool = None, keep_temp: bool = False) -> 
         chk.exclude_bands = np.zeros(chk.num_exclude_bands, dtype=int)
         #
         if chk.num_exclude_bands > 0:
-            line = handle.readline().strip().split()
-            chk.exclude_bands[:] = [int(_) for _ in line]
+            # line = handle.readline().strip().split()
+            # chk.exclude_bands[:] = [int(_) for _ in line]
+            for i in range(chk.num_exclude_bands):
+                line = handle.readline().strip()
+                chk.exclude_bands[i] = int(line)
         # Just store as a 1D array
         chk.real_lattice = np.zeros(9)
         line = handle.readline().strip().split()
@@ -507,8 +510,11 @@ def write_chk(
         handle.write(f"{chk.num_exclude_bands}\n")
         #
         if chk.num_exclude_bands > 0:
-            line = " ".join([str(_) for _ in chk.exclude_bands])
-            handle.write(f"{line}\n")
+            # line = " ".join([str(_) for _ in chk.exclude_bands])
+            # handle.write(f"{line}\n")
+            for i in range(chk.num_exclude_bands):
+                line = f"{chk.exclude_bands[i]}"
+                handle.write(f"{line}\n")
         # Just store as a 1D array
         line = " ".join([f"{_:22.16f}" for _ in chk.real_lattice])
         handle.write(f"{line}\n")
@@ -602,9 +608,9 @@ def reorder_chk(seedname_in: str, seedname_out: str, bandsort: np.ndarray) -> No
 
     chk = read_chk(filename_in, formatted=False)
 
-    if chk.num_exclude_bands > 0:
-        # chk.exclude_bands =
-        raise NotImplementedError("does not support exclude bands")
+    # if chk.num_exclude_bands > 0:
+    #     # chk.exclude_bands =
+    #     # raise NotImplementedError("does not support exclude bands")
 
     if chk.have_disentangled:
         for ik in range(chk.num_kpts):
@@ -734,10 +740,9 @@ def gw2wannier90(
             break
     exbands = np.array(f.readline().split(), dtype=int)
     if len(exbands) > 1 or exbands[0] != 0:
-        # raise RuntimeError("exclude bands is not supported yet") # actually it is OK, see below
         print(
             "Exclude bands option is used: be careful to be consistent "
-            + "with the choice of bands for the GW QP corrections."
+            "with the choice of bands for the GW QP corrections."
         )
         nexbands = exbands[0]
         exbands = np.zeros(nexbands, dtype=int)
