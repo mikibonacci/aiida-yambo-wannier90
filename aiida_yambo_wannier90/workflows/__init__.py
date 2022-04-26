@@ -456,6 +456,7 @@ class YamboWannier90WorkChain(
         pseudo_family: str = "PseudoDojo/0.4/PBE/SR/standard/upf",
         exclude_semicore: bool = False,
         electronic_type=ElectronicType.METAL,
+        wannier_projection_type: WannierProjectionType = WannierProjectionType.ATOMIC_PROJECTORS_QE,
         NLCC: bool = True,
         RIM_v: bool = True,
         RIM_W: bool = False,
@@ -526,18 +527,22 @@ class YamboWannier90WorkChain(
         inputs["yambo"].pop("clean_workdir", None)
 
         # Prepare wannier
-        projection_type = WannierProjectionType.ATOMIC_PROJECTORS_QE
-        disentanglement_type = WannierDisentanglementType.SMV
-        frozen_type = WannierFrozenType.FIXED_PLUS_PROJECTABILITY
+        # projection_type = WannierProjectionType.ATOMIC_PROJECTORS_QE
+        # disentanglement_type = WannierDisentanglementType.SMV
+        # frozen_type = WannierFrozenType.FIXED_PLUS_PROJECTABILITY
+        # Auto guess from projection_type
+        disentanglement_type = None
+        frozen_type = None
         wannier_builder = Wannier90OptimizeWorkChain.get_builder_from_protocol(
             codes,
             structure,
             pseudo_family=pseudo_family,
             exclude_semicore=exclude_semicore,
-            projection_type=projection_type,
+            projection_type=wannier_projection_type,
             disentanglement_type=disentanglement_type,
             frozen_type=frozen_type,
         )
+        # No reference PW bands, so we stop optimization
         wannier_builder.optimize_disproj = False
         inputs["wannier90"] = wannier_builder._inputs(prune=True)
         inputs["wannier90"].pop("structure", None)
@@ -624,9 +629,9 @@ class YamboWannier90WorkChain(
             # the parent of `yambo_qp` is a converged mesh.
             # Since the workchain runs sequentially, the `yambo_qp` must be
             # in the workchain inputs.
-            if 'yambo_qp' in self.inputs:
+            if "yambo_qp" in self.inputs:
                 parent_folder = self.inputs.yambo_qp.parent_folder
-            elif 'ypp' in self.inputs:
+            elif "ypp" in self.inputs:
                 parent_folder = self.inputs.ypp.parent_folder
             # The creator is a YamboCalculation, caller is a YamboRestart
             wkchain_gw = parent_folder.creator.caller
