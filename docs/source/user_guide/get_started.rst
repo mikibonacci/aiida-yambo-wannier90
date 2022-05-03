@@ -38,5 +38,5 @@ If you have already set up your own aiida_yambo_wannier90 code using
 Available calculations
 ++++++++++++++++++++++
 
-.. aiida-calcjob:: DiffCalculation
-    :module: aiida_yambo_wannier90.calculations
+.. aiida-calcjob:: Gw2wannier90Calculation
+    :module: aiida_yambo_wannier90.calculations.gw2wannier90
