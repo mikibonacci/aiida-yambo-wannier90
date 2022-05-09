@@ -176,6 +176,13 @@ class YamboWannier90WorkChain(
             default=lambda: orm.Bool(False),
             help="If `True` will force W90 to use the GW converged k-point mesh.",
         )
+        spec.input(
+            "GW_mesh",
+            valid_type=orm.KpointsData,
+            serializer=orm.to_aiida_type,
+            required=False,
+            help="GW mesh. This allow to start from yambo commensurate, skipping gw convergence",
+        )
         spec.expose_inputs(
             YamboConvergence,
             namespace="yambo",
@@ -741,6 +748,8 @@ class YamboWannier90WorkChain(
 
     def should_run_setup_kmesh(self) -> bool:
         """Whether to run setup_kmesh."""
+        if "GW_mesh" in self.inputs:
+            self.ctx.kpoints_gw_conv = self.inputs.GW_mesh
         return self.should_run_yambo_convergence() or self.should_run_wannier90_pp()
 
     def setup_kmesh(self) -> None:
@@ -800,16 +809,18 @@ class YamboWannier90WorkChain(
     def prepare_yambo_commensurate_inputs(self) -> AttributeDict:
         """Prepare inputs for yambo commensurate."""
         # Get and reuse the converged input from YamboWorkflow
-        converged_wkchain = get_yambo_converged_workchain(self.ctx.wkchain_yambo_conv)
         # pylint: disable=protected-access
-        input_parameters = converged_wkchain.inputs._construct_attribute_dict(True)
-
         inputs = AttributeDict(self.exposed_inputs(YamboWorkflow, namespace="yambo_qp"))
         if "QP_subset_dict" in inputs:
             del inputs.QP_subset_dict
         inputs.scf.pw.structure = self.ctx.current_structure
         inputs.nscf.pw.structure = self.ctx.current_structure
-        inputs.yres.yambo.parameters = input_parameters.yres.yambo.parameters
+
+        if not self.should_run_yambo_convergence():
+            inputs.yres.yambo.parameters = input_parameters.yres.yambo.parameters
+        else:
+            converged_wkchain = get_yambo_converged_workchain(self.ctx.wkchain_yambo_conv)
+            input_parameters = converged_wkchain.inputs._construct_attribute_dict(True)
 
         # Use commensurate mesh
         inputs.nscf.kpoints = self.ctx.kpoints_gw
