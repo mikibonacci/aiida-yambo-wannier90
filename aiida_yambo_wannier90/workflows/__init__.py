@@ -78,6 +78,7 @@ def validate_inputs(  # pylint: disable=inconsistent-return-statements,too-many-
 
     # Check inputs if previous steps are skipped
     should_run_yambo = "yambo" in inputs
+    should_run_yambo_commensurate = "GW_mesh" in inputs
     should_run_wannier90 = "wannier90" in inputs
     should_run_yambo_qp = "yambo_qp" in inputs
     should_run_ypp = "ypp" in inputs
@@ -88,7 +89,7 @@ def validate_inputs(  # pylint: disable=inconsistent-return-statements,too-many-
         yambo_qp_inputs = inputs["yambo_qp"]
 
         if not should_run_yambo:
-            if "parent_folder" not in yambo_qp_inputs:
+            if "parent_folder" not in yambo_qp_inputs and not should_run_yambo_commensurate:
                 return "`yambo_qp.parent_folder` is empty."
 
     if should_run_ypp:
@@ -631,7 +632,7 @@ class YamboWannier90WorkChain(
 
         # Converged mesh from YamboConvergence
         self.ctx.kpoints_gw_conv = None
-        if self.should_run_setup_kmesh() and not self.should_run_yambo_convergence():
+        if self.should_run_setup_kmesh() and not self.should_run_yambo_convergence() and not "GW_mesh" in self.inputs:
             # `setup_kmesh` need `self.ctx.kpoints_gw_conv`, I assume that
             # the parent of `yambo_qp` is a converged mesh.
             # Since the workchain runs sequentially, the `yambo_qp` must be
@@ -661,7 +662,7 @@ class YamboWannier90WorkChain(
                 kmesh_gw_conv = get_mesh_from_kpoints(self.ctx.kpoints_gw_conv)
                 kmesh_w90_input = get_mesh_from_kpoints(self.ctx.kpoints_w90_input)
 
-                if not is_commensurate(kmesh_gw_conv, kmesh_w90_input):
+                if not is_commensurate(kmesh_gw_conv, kmesh_w90_input) and not 'GW_mesh' in self.inputs:
                     self.report(
                         f"Skipping GW convergence, but GW converged mesh {kmesh_gw_conv} "
                         f"is not commensurate with W90 input mesh {kmesh_w90_input}"
@@ -798,6 +799,10 @@ class YamboWannier90WorkChain(
 
     def should_run_yambo_commensurate(self) -> bool:
         """Whether to run again yambo on the commensurate kmesh."""
+
+        if "GW_mesh" in self.inputs and not 'parent_folder' in self.inputs["yambo_qp"]:
+            return True
+
         if not self.should_run_yambo_convergence():
             return False
 
@@ -816,11 +821,9 @@ class YamboWannier90WorkChain(
         inputs.scf.pw.structure = self.ctx.current_structure
         inputs.nscf.pw.structure = self.ctx.current_structure
 
-        if not self.should_run_yambo_convergence():
-            inputs.yres.yambo.parameters = input_parameters.yres.yambo.parameters
-        else:
+        if self.should_run_yambo_convergence():
             converged_wkchain = get_yambo_converged_workchain(self.ctx.wkchain_yambo_conv)
-            input_parameters = converged_wkchain.inputs._construct_attribute_dict(True)
+            inputs.yres.yambo.parameters = converged_wkchain.inputs._construct_attribute_dict(True)
 
         # Use commensurate mesh
         inputs.nscf.kpoints = self.ctx.kpoints_gw
