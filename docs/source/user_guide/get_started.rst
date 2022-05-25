@@ -2,8 +2,12 @@
 Getting started
 ===============
 
-This page should contain a short guide on what the plugin does and
-a short example on how to use the plugin.
+The aiida-yambo-wannier90 plugin is a package devoted to the automatic calculation of G0W0 interpolated
+band structure of a given material, starting with very few inputs like the structure of the system.
+The code automatically organizes and runs the needed calculations, starting from a G0W0 convergence test
+and proceeding with the calculation of the wannierized wavefunctions and the interpolated band structures, 
+both DFT and G0W0. The softwares used in the simulations are the quantumEspresso package, the Yambo Code and 
+Wannier90. 
 
 Installation
 ++++++++++++
@@ -27,7 +31,7 @@ A quick demo of how to submit a calculation::
 
     verdi daemon start         # make sure the daemon is running
     cd examples
-    verdi run test_submit.py        # submit test calculation
+    ./example_01.py -r        # submit test calculation
     verdi calculation list -a  # check status of calculation
 
 If you have already set up your own aiida_yambo_wannier90 code using

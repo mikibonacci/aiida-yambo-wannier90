@@ -1,4 +1,38 @@
+# aiida-yambo-wannier90
+
+Package devoted to the automatic calculation of G0W0 interpolated band structure of materials.
+
+## Installation
+
+Use the following commands to install the plugin::
+
+    git clone https://github.com/aiidateam/aiida-yambo-wannier90 .
+    cd aiida-yambo-wannier90
+    pip install -e .  # also installs aiida, if missing (but not postgres)
+    #pip install -e .[pre-commit,testing] # install extras for more features
+    verdi quicksetup  # better to set up a new profile
+    verdi plugin list aiida.calculations  # should now show your calculation plugins
+
+Then use ``verdi code setup`` with the ``yambo_wannier90`` input plugin
+to set up an AiiDA code for aiida-yambo-wannier90.
+
+## Usage
+
+A quick demo of how to submit a calculation::
+
+    verdi daemon start         # make sure the daemon is running
+    cd examples
+    ./example_01.py -r        # submit test calculation
+    verdi calculation list -a  # check status of calculation
+
+If you have already set up your own aiida_yambo_wannier90 code using
+``verdi code setup``, you may want to try the following command::
+
+    yambo_wannier90-submit  # uses aiida_yambo_wannier90.cli
+
 # Examples
+
+For each examples, please update codes and structure.
 
 1. [example01](./example_01.py): `Wannier90BandsWorkChain` for wannier90 bands
 

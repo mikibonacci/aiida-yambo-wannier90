@@ -2,14 +2,26 @@
 Tutorial
 ========
 
-This page can contain a simple tutorial for your code.
+All the examples provided with the plugin are executables, and can be launched from the command line:
 
-What we want to achieve
-+++++++++++++++++++++++
+::
+    cd examples
+    ./example_01.py     # this creates the inputs and plots the builder
+    ./example_01.py -r  # actual run
 
-The purpose of this plugin is to provide a workchain able to give you accurate G0W0 interpolated bands
-performed with the Wannier90 and Yambo code, starting from scratch (i.e., only the structure and few
-other inputs).
+To run on your own machine, you have to change the input structure and codes. 
+
+Example 1: running Wannier90BandsWorkChain for wannier90 bands
+--------------------------------------------------------------
+
+The example 2 computes QE bands. These are needed in order to compare with W90 DFT interpolated bands and
+assess their accuracy. 
+
+Example 2: running PwBaseWorkchain for QE bands
+-----------------------------------------------
+
+The example 2 computes QE bands. These are needed in order to compare with W90 DFT interpolated bands and
+assess their accuracy. 
 
 Example 3: running YamboWorkflow
 --------------------------------
@@ -27,6 +39,14 @@ to create the unsorted.eig file needed by wannier90 to have eigenvalues on which
 For more details, please have a look at the documentation of the yambo-aiida plugin 
 (https://aiida-yambo.readthedocs.io/en/master/).
 
+Example 5: running Gw2wannier90Calculation for sorted eig
+---------------------------------------------------------
+
+
+Example 6: running YamboWannier90WorkChain starting from `gw2wannier90` step
+----------------------------------------------------------------------------
+
+
 Example 7: running YamboConvergence
 -----------------------------------
 
@@ -41,10 +61,15 @@ Example 9: running YamboWannier90WorkChain
 ------------------------------------------
 
 This last example shows how to run a complete `YamboWannier90WorkChain` from scratch for Silicon. 
-You only have to modify the example to load the correct structure, and then the workchain takes
-care to perform all the necessary steps needed to obtain interpolated GW band structure.
+You only have to modify the example to load the correct structure and your codes, and then the workchain takes
+care to perform all the necessary steps needed to obtain interpolated G0W0 band structure.
+Final result is shown in Fig. . 
 
-The final result
-+++++++++++++++++++++++
+.. image:: ./images/Silicon_full.png
 
-Some text
+You can reproduce the same plot by running both example 2, to obtain the QE bands, both example 9 (this one), and then 
+use the command 
+
+::
+
+    aiida-yambo-wannier90 plot bands <pk_qe_bands> <pk_yambo_wannier_90_workchain> 
