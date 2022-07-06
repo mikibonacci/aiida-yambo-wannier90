@@ -1,7 +1,7 @@
 The aiida-yambo-wannier90 plugin for `AiiDA`_
 =====================================================
 
-``aiida-yambo-wannier90`` is available at http://github.com/aiidateam/aiida-yambo-wannier90
+``aiida-yambo-wannier90`` is available at http://github.com/aiidaplugins/aiida-yambo-wannier90
 
 
 .. toctree::

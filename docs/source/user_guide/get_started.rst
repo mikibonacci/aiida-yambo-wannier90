@@ -14,7 +14,7 @@ Installation
 
 Use the following commands to install the plugin::
 
-    git clone https://github.com/aiidateam/aiida-yambo-wannier90 .
+    git clone https://github.com/aiidaplugins/aiida-yambo-wannier90 .
     cd aiida-yambo-wannier90
     pip install -e .  # also installs aiida, if missing (but not postgres)
     #pip install -e .[pre-commit,testing] # install extras for more features

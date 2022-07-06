@@ -58,6 +58,10 @@ are converged simultaneously.
 For more details, please have a look at the documentation of the yambo-aiida plugin 
 (https://aiida-yambo.readthedocs.io/en/master/).
 
+Example 8: running YamboWannier90WorkChain starting from `wannier90` step
+----------------------------------------------------------------------------
+
+This example skip the yambo related steps, only restarting from the ``wannier90`` step for the Wannierization and band interpolation.
 
 Example 9: running YamboWannier90WorkChain
 ------------------------------------------
