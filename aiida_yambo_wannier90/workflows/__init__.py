@@ -800,6 +800,9 @@ class YamboWannier90WorkChain(
     def should_run_yambo_commensurate(self) -> bool:
         """Whether to run again yambo on the commensurate kmesh."""
 
+        if 'QP_DB' in self.inputs['ypp']['ypp'] and 'parent_folder' in self.inputs["ypp"]:
+            return False
+        
         if "GW_mesh" in self.inputs and not 'parent_folder' in self.inputs["yambo_qp"]:
             return True
 
@@ -1119,11 +1122,14 @@ class YamboWannier90WorkChain(
             # Working if merge is not needed
             if "merged_QP" in yambo_wkchain.outputs:
                 inputs.ypp.QP_DB = yambo_wkchain.outputs.merged_QP
+                inputs.parent_folder = self.ctx.wkchain_yambo_qp.called[
+                    1
+                ].inputs.parent_folder
             else:
                 inputs.ypp.QP_DB = yambo_wkchain.outputs.QP_DB
-            inputs.parent_folder = self.ctx.wkchain_yambo_qp.called[
-                0
-            ].inputs.parent_folder
+                inputs.parent_folder = self.ctx.wkchain_yambo_qp.called[
+                    0
+                ].inputs.parent_folder
 
         if self.should_run_wannier90_pp():
             inputs.ypp.nnkp_file = self.ctx.wkchain_wannier90_pp.outputs.nnkp_file
