@@ -31,7 +31,7 @@ dependencies = [
 ]
 
 [project.urls]
-Source = "https://github.com/aiidaplugins/aiida-yambo-wannier90"
+Source = "https://github.com/mikibonacci/aiida-yambo-wannier90"
 
 [project.optional-dependencies]
 testing = [

@@ -800,6 +800,9 @@ class YamboWannier90WorkChain(
     def should_run_yambo_commensurate(self) -> bool:
         """Whether to run again yambo on the commensurate kmesh."""
 
+        if 'QP_DB' in self.inputs['ypp']['ypp'] and 'parent_folder' in self.inputs["ypp"]:
+            return False
+            
         if "GW_mesh" in self.inputs and not 'parent_folder' in self.inputs["yambo_qp"]:
             return True
 
