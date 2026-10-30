@@ -1,0 +1,86 @@
+site_name: aiida-yambo-wannier90
+site_description: GW-corrected Wannier-interpolated band structures with AiiDA, Yambo and Wannier90
+# The URLs come from the environment, so the same file builds the site of any fork (the GitHub workflow sets them from
+# the repository it runs in); the defaults are the upstream ones, for a local build.
+site_url: !ENV [SITE_URL, 'https://aiidaplugins.github.io/aiida-yambo-wannier90/']
+repo_url: !ENV [REPO_URL, 'https://github.com/aiidaplugins/aiida-yambo-wannier90']
+repo_name: !ENV [REPO_NAME, 'aiidaplugins/aiida-yambo-wannier90']
+docs_dir: docs
+theme:
+  name: material
+  language: en
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.top
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.footer
+    - toc.follow
+    - toc.integrate
+    - content.code.copy
+    - content.code.select
+    - content.code.annotate
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+markdown_extensions:
+  - attr_list
+  - md_in_html
+  - def_list
+  - admonition
+  - pymdownx.details
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+extra_javascript:
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+plugins:
+  - search
+exclude_docs: |
+  source/**
+  build/**
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Concepts:
+      - How the workchain works: concepts/workflow.md
+  - How-to:
+      - Overview: how-to/index.md
+      - Set the inputs (builder and setters): how-to/inputs.md
+      - Choose the band path: how-to/kpath.md
+      - Set the resources: how-to/resources.md
+      - Start from the middle: how-to/stages.md
+  - Examples: examples.md
+  - Reference:
+      - Setters: reference/setters.md
+      - Exit codes: reference/exit-codes.md
+  - Development: development.md

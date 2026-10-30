@@ -6,7 +6,7 @@ import pytest
 
 # pylint: disable=redefined-outer-name,too-many-statements
 
-pytest_plugins = ["aiida.manage.tests.pytest_fixtures"]  # pylint: disable=invalid-name
+pytest_plugins = ["aiida.tools.pytest_fixtures"]  # pylint: disable=invalid-name
 
 
 # @pytest.fixture(scope="function", autouse=True)
@@ -86,14 +86,7 @@ def generate_upf_data():
         import yaml
 
         # yaml_file = filepath_fixtures / 'pseudos' / 'SSSP_1.1_PBE_efficiency.yaml'
-        import aiida_wannier90_workflows
-
-        fixtures_dir = (
-            pathlib.Path(aiida_wannier90_workflows.__path__[0])
-            / ".."
-            / "tests"
-            / "fixtures"
-        )
+        fixtures_dir = pathlib.Path(__file__).resolve().parent / "fixtures"
         yaml_file = fixtures_dir / "pseudos" / "SSSP_1.1_PBE_efficiency.yaml"
 
         with open(yaml_file) as file:
@@ -146,7 +139,6 @@ def pseudo_dojo(aiida_profile, generate_upf_data):
     from aiida.common.constants import elements
     from aiida.plugins import GroupFactory
 
-    aiida_profile.reset_db()
 
     # SsspFamily = GroupFactory('pseudo.family.sssp')
     PseudoDojoFamily = GroupFactory("pseudo.family.pseudo_dojo")
@@ -191,10 +183,10 @@ def serialize_builder():
     :param builder: the process builder to serialize
     :return: dictionary
     """
-    from aiida_wannier90_workflows.utils.workflows.builder import serializer
+    from aiida_wannier90_workflows.utils.workflows.builder.serializer import serialize
 
     def _serializer(node):
-        return serializer(node, show_pk=False)
+        return serialize(node, show_pk=False)
 
     return _serializer
 
@@ -313,3 +305,33 @@ def generate_builder_inputs(fixture_code, generate_structure):
         return inputs
 
     return _generate_builder_inputs
+
+
+try:
+    import pytest_regressions  # noqa: F401  # pylint: disable=unused-import
+except ImportError:  # minimal stand-in of the ``data_regression`` fixture, to run the tests without the plugin
+
+    @pytest.fixture
+    def data_regression(request):
+        """Compare a dictionary with the yaml file next to the test (set ``REGEN_DATA=1`` to rewrite it)."""
+        import os
+        import re
+
+        import yaml
+
+        class DataRegression:  # pylint: disable=too-few-public-methods
+            """The part of the pytest-regressions API used here."""
+
+            @staticmethod
+            def check(data):
+                """Fail if `data` differs from the stored file."""
+                name = re.sub(r"[\[\]]", "_", request.node.name)
+                path = request.path.parent / request.path.stem / f"{name}.yml"
+                dumped = yaml.safe_dump(data, sort_keys=True)
+                if os.environ.get("REGEN_DATA") or not path.exists():
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(dumped)
+                    return
+                assert yaml.safe_load(dumped) == yaml.safe_load(path.read_text())
+
+        return DataRegression()

@@ -1,18 +1,20 @@
 clean_workdir: false
 gw2wannier90:
-  code: test.yambo_wannier90.gw2wannier90@localhost-test
+  code: test.yambo_wannier90.gw2wannier90@localhost
 structure: Si2
 wannier90:
   nscf:
     kpoints: 1331 kpts
     kpoints_force_parity: false
+    max_iterations: 5
     pw:
-      code: test.quantumespresso.pw@localhost-test
+      code: test.quantumespresso.pw@localhost
       metadata:
         options:
           max_wallclock_seconds: 43200
           resources:
             num_machines: 1
+            num_mpiprocs_per_machine: 1
           withmpi: true
       parameters:
         CONTROL:
@@ -29,7 +31,7 @@ wannier90:
           mixing_beta: 0.4
           startingpot: file
         SYSTEM:
-          degauss: 0.01
+          degauss: 0.02
           ecutrho: 240.0
           ecutwfc: 30.0
           nbnd: 16
@@ -39,43 +41,31 @@ wannier90:
           smearing: cold
       pseudos:
         Si: Si.pbe-n-rrkjus_psl.1.0.0.UPF
-  projwfc:
-    projwfc:
-      code: test.quantumespresso.projwfc@localhost-test
-      metadata:
-        options:
-          max_wallclock_seconds: 43200
-          resources:
-            num_machines: 1
-            num_mpiprocs_per_machine: 1
-          withmpi: true
-      parameters:
-        PROJWFC:
-          DeltaE: 0.2
+  optimize_disproj: false
   pw2wannier90:
     pw2wannier90:
-      code: test.quantumespresso.pw2wannier90@localhost-test
+      code: test.quantumespresso.pw2wannier90@localhost
       metadata:
         options:
           max_wallclock_seconds: 43200
           resources:
             num_machines: 1
-            num_mpiprocs_per_machine: 1
           withmpi: true
       parameters:
-        inputpp:
-          scdm_entanglement: erfc
-          scdm_proj: true
+        INPUTPP:
+          atom_proj: true
   scf:
     kpoints_distance: 0.2
     kpoints_force_parity: false
+    max_iterations: 5
     pw:
-      code: test.quantumespresso.pw@localhost-test
+      code: test.quantumespresso.pw@localhost
       metadata:
         options:
           max_wallclock_seconds: 43200
           resources:
             num_machines: 1
+            num_mpiprocs_per_machine: 1
           withmpi: true
       parameters:
         CONTROL:
@@ -89,7 +79,7 @@ wannier90:
           electron_maxstep: 80
           mixing_beta: 0.4
         SYSTEM:
-          degauss: 0.01
+          degauss: 0.02
           ecutrho: 240.0
           ecutwfc: 30.0
           nosym: false
@@ -100,9 +90,9 @@ wannier90:
   wannier90:
     auto_energy_windows: false
     auto_energy_windows_threshold: 0.9
-    shift_energy_windows: false
+    shift_energy_windows: true
     wannier90:
-      code: test.wannier90.wannier90@localhost-test
+      code: test.wannier90.wannier90@localhost
       kpoints: 1331 kpts
       metadata:
         options:
@@ -116,7 +106,10 @@ wannier90:
         conv_tol: 2.0e-07
         conv_window: 3
         dis_conv_tol: 2.0e-07
-        dis_num_iter: 0
+        dis_froz_max: 2.0
+        dis_num_iter: 4000
+        dis_proj_max: 0.95
+        dis_proj_min: 0.01
         mp_grid:
         - 11
         - 11
@@ -131,7 +124,7 @@ wannier90_qp:
   auto_energy_windows_threshold: 0.9
   shift_energy_windows: true
   wannier90:
-    code: test.wannier90.wannier90@localhost-test
+    code: test.wannier90.wannier90@localhost
     kpoints: 1331 kpts
     metadata:
       options:
@@ -141,6 +134,7 @@ wannier90_qp:
         withmpi: true
     parameters:
       auto_projections: true
+      bands_plot: true
       conv_tol: 2.0e-07
       conv_window: 3
       dis_conv_tol: 2.0e-07
@@ -162,70 +156,91 @@ yambo:
   - conv_thr: 5
     conv_thr_units: '%'
     convergence_algorithm: new_algorithm_1D
-    delta:
-    - 2
-    - 2
-    - 2
-    max:
-    - 22
-    - 22
-    - 22
+    delta: 3
+    dtype: int
+    fit_function: power_law
+    fit_options: {}
+    max: 30
+    max_concurrent_steps: 4
     max_iterations: 4
-    start:
-    - 6
-    - 6
-    - 6
+    mirror_values: []
+    start: 7
     steps: 4
-    stop:
-    - 14
-    - 14
-    - 14
+    stop: 21
+    units: Ry
     var:
-    - kpoint_mesh
+    - FFTGvecs
+  - conv_thr: 5
+    conv_thr_units: '%'
+    convergence_algorithm: new_algorithm_1D
+    delta: -0.04000000000000001
+    dtype: int
+    fit_function: power_law
+    fit_options: {}
+    max: 0.8
+    max_concurrent_steps: 4
+    max_iterations: 4
+    mirror_values: []
+    start: 0.8
+    steps: 4
+    stop: 0.2
+    units: 1/A
+    var:
+    - kpoint_density
   - conv_thr: 5
     conv_thr_units: '%'
     convergence_algorithm: new_algorithm_2D
     delta:
-    - 200
-    - 200
+    - 160.23394974385783
     - 2
+    dtype: int
+    fit_function: power_law
+    fit_options: {}
     max:
-    - 2000
-    - 2000
+    - 3204.6789948771566
     - 40
+    max_concurrent_steps: 4
     max_iterations: 8
+    mirror_values:
+      BndsRnXp:
+      - GbndRnge
+    points: 6
     start:
-    - 200
-    - 200
-    - 8
+    - 640.9357989754313
+    - 6
     steps: 6
     stop:
-    - 800
-    - 800
-    - 18
+    - 1602.3394974385783
+    - 20
+    units:
+    - ''
+    - Ry
     var:
     - BndsRnXp
-    - GbndRnge
     - NGsBlkXp
   workflow_settings:
     bands_nscf_update: all-at-once
     skip_pre: false
-    type: 1D_convergence
+    type: cheap
     what:
     - gap_GG
   ywfl:
     nscf:
       clean_workdir: false
-      kpoints: '[6, 6, 6] mesh + [0.0, 0.0, 0.0] offset'
       kpoints_distance: 0.15
       kpoints_force_parity: false
+      max_iterations: 5
       pw:
-        code: test.quantumespresso.pw@localhost-test
+        code: test.quantumespresso.pw@localhost
         metadata:
           options:
+            custom_scheduler_commands: ''
             max_wallclock_seconds: 43200
+            prepend_text: ''
             resources:
+              num_cores_per_mpiproc: 1
               num_machines: 1
+              num_mpiprocs_per_machine: 1
             withmpi: true
         parameters:
           CONTROL:
@@ -234,30 +249,93 @@ yambo:
             forc_conv_thr: 0.0001
             tprnfor: true
             tstress: true
+            wf_collect: true
           ELECTRONS:
             conv_thr: 4.0e-10
             electron_maxstep: 80
             mixing_beta: 0.4
           SYSTEM:
-            ecutrho: 240.0
+            degauss: 0.02
+            ecutrho: 120.0
             ecutwfc: 30.0
             force_symmorphic: true
-            nbnd: 200
             nosym: false
-            occupations: fixed
+            occupations: smearing
+            smearing: cold
         pseudos:
           Si: Si.pbe-n-rrkjus_psl.1.0.0.UPF
+    qp:
+      clean_workdir: false
+      yambo:
+        code: test.yambo.yambo@localhost
+        metadata:
+          options:
+            custom_scheduler_commands: ''
+            max_wallclock_seconds: 43200
+            prepend_text: ''
+            resources:
+              num_cores_per_mpiproc: 1
+              num_machines: 1
+              num_mpiprocs_per_machine: 1
+            withmpi: true
+        parameters:
+          arguments:
+          - dipoles
+          - ppa
+          - HF_and_locXC
+          - gw0
+          - NLCC
+          - rim_cut
+          variables:
+            BndsRnXp:
+            - - 1
+              - 300
+            - ''
+            Chimod: hartree
+            DysSolver: n
+            FFTGvecs:
+            - 15
+            - Ry
+            GTermKind: BG
+            GbndRnge:
+            - - 1
+              - 300
+            - ''
+            NGsBlkXp:
+            - 6
+            - Ry
+            QPkrange:
+            - - - 1
+                - 1
+                - 32
+                - 32
+            - ''
+            RandGvec:
+            - 100
+            - RL
+            RandQpts:
+            - 5000000
+            - ''
+            X_and_IO_nCPU_LinAlg_INV:
+            - 1
+            - ''
+        preprocessing_code: test.yambo.p2y@localhost
     scf:
       clean_workdir: false
       kpoints_distance: 0.15
       kpoints_force_parity: false
+      max_iterations: 5
       pw:
-        code: test.quantumespresso.pw@localhost-test
+        code: test.quantumespresso.pw@localhost
         metadata:
           options:
+            custom_scheduler_commands: ''
             max_wallclock_seconds: 43200
+            prepend_text: ''
             resources:
+              num_cores_per_mpiproc: 1
               num_machines: 1
+              num_mpiprocs_per_machine: 1
             withmpi: true
         parameters:
           CONTROL:
@@ -271,117 +349,156 @@ yambo:
             electron_maxstep: 80
             mixing_beta: 0.4
           SYSTEM:
-            ecutrho: 240.0
+            degauss: 0.02
+            ecutrho: 120.0
             ecutwfc: 30.0
             force_symmorphic: true
             nosym: false
-            occupations: fixed
+            occupations: smearing
+            smearing: cold
         pseudos:
           Si: Si.pbe-n-rrkjus_psl.1.0.0.UPF
-    yres:
-      clean_workdir: false
-      yambo:
-        code: test.yambo.yambo@localhost-test
-        metadata:
-          options:
-            max_wallclock_seconds: 43200
-            resources:
-              num_cores_per_mpiproc: 1
-              num_machines: 1
-              num_mpiprocs_per_machine: 16
-            withmpi: true
-        parameters:
-          arguments:
-          - dipoles
-          - ppa
-          - HF_and_locXC
-          - gw0
-          - NLCC
-          - rim_cut
-          variables:
-            BndsRnXp:
-            - - 1
-              - 200
-            - ''
-            Chimod: hartree
-            DysSolver: n
-            GTermKind: BG
-            GbndRnge:
-            - - 1
-              - 200
-            - ''
-            NGsBlkXp:
-            - 8
-            - Ry
-            PAR_def_mode: balanced
-            QPkrange:
-            - - - 1
-                - 1
-                - 32
-                - 32
-            - ''
-            RandGvec:
-            - 100
-            - RL
-            RandQpts:
-            - 5000000
-            - ''
-        preprocessing_code: test.yambo.p2y@localhost-test
 yambo_qp:
-  yambo:
-    code: test.yambo.yambo@localhost-test
-    metadata:
-      options:
-        max_wallclock_seconds: 43200
-        resources:
-          num_cores_per_mpiproc: 1
-          num_machines: 1
-          num_mpiprocs_per_machine: 16
-        withmpi: true
-    parameters:
-      arguments:
-      - dipoles
-      - ppa
-      - HF_and_locXC
-      - gw0
-      - NLCC
-      - rim_cut
-      variables:
-        BndsRnXp:
-        - - 1
-          - 0
-        - ''
-        Chimod: hartree
-        DysSolver: n
-        GTermKind: BG
-        GbndRnge:
-        - - 1
-          - 0
-        - ''
-        NGsBlkXp:
-        - 1
-        - Ry
-        PAR_def_mode: balanced
-        QPkrange:
-        - - - 1
-            - 1
-            - 32
-            - 32
-        - ''
-        RandGvec:
-        - 100
-        - RL
-        RandQpts:
-        - 5000000
-        - ''
-    preprocessing_code: test.yambo.p2y@localhost-test
+  nscf:
+    clean_workdir: false
+    kpoints_distance: 0.15
+    kpoints_force_parity: false
+    max_iterations: 5
+    pw:
+      code: test.quantumespresso.pw@localhost
+      metadata:
+        options:
+          custom_scheduler_commands: ''
+          max_wallclock_seconds: 43200
+          prepend_text: ''
+          resources:
+            num_cores_per_mpiproc: 1
+            num_machines: 1
+            num_mpiprocs_per_machine: 1
+          withmpi: true
+      parameters:
+        CONTROL:
+          calculation: nscf
+          etot_conv_thr: 2.0e-05
+          forc_conv_thr: 0.0001
+          tprnfor: true
+          tstress: true
+          wf_collect: true
+        ELECTRONS:
+          conv_thr: 4.0e-10
+          electron_maxstep: 80
+          mixing_beta: 0.4
+        SYSTEM:
+          degauss: 0.02
+          ecutrho: 120.0
+          ecutwfc: 30.0
+          force_symmorphic: true
+          nosym: false
+          occupations: smearing
+          smearing: cold
+      pseudos:
+        Si: Si.pbe-n-rrkjus_psl.1.0.0.UPF
+  qp:
+    clean_workdir: false
+    yambo:
+      code: test.yambo.yambo@localhost
+      metadata:
+        options:
+          custom_scheduler_commands: ''
+          max_wallclock_seconds: 43200
+          prepend_text: ''
+          resources:
+            num_cores_per_mpiproc: 1
+            num_machines: 1
+            num_mpiprocs_per_machine: 1
+          withmpi: true
+      parameters:
+        arguments:
+        - dipoles
+        - ppa
+        - HF_and_locXC
+        - gw0
+        - NLCC
+        - rim_cut
+        variables:
+          BndsRnXp:
+          - - 1
+            - 300
+          - ''
+          Chimod: hartree
+          DysSolver: n
+          FFTGvecs:
+          - 15
+          - Ry
+          GTermKind: BG
+          GbndRnge:
+          - - 1
+            - 300
+          - ''
+          NGsBlkXp:
+          - 6
+          - Ry
+          QPkrange:
+          - - - 1
+              - 1
+              - 32
+              - 32
+          - ''
+          RandGvec:
+          - 100
+          - RL
+          RandQpts:
+          - 5000000
+          - ''
+          X_and_IO_nCPU_LinAlg_INV:
+          - 1
+          - ''
+      preprocessing_code: test.yambo.p2y@localhost
+  scf:
+    clean_workdir: false
+    kpoints_distance: 0.15
+    kpoints_force_parity: false
+    max_iterations: 5
+    pw:
+      code: test.quantumespresso.pw@localhost
+      metadata:
+        options:
+          custom_scheduler_commands: ''
+          max_wallclock_seconds: 43200
+          prepend_text: ''
+          resources:
+            num_cores_per_mpiproc: 1
+            num_machines: 1
+            num_mpiprocs_per_machine: 1
+          withmpi: true
+      parameters:
+        CONTROL:
+          calculation: scf
+          etot_conv_thr: 2.0e-05
+          forc_conv_thr: 0.0001
+          tprnfor: true
+          tstress: true
+        ELECTRONS:
+          conv_thr: 4.0e-10
+          electron_maxstep: 80
+          mixing_beta: 0.4
+        SYSTEM:
+          degauss: 0.02
+          ecutrho: 120.0
+          ecutwfc: 30.0
+          force_symmorphic: true
+          nosym: false
+          occupations: smearing
+          smearing: cold
+      pseudos:
+        Si: Si.pbe-n-rrkjus_psl.1.0.0.UPF
 ypp:
   ypp:
-    code: test.yambo.ypp@localhost-test
+    code: test.yambo.ypp@localhost
     metadata:
       options:
         max_wallclock_seconds: 1800
-        prepend_text: mv ./SAVE/ndb.QP* .
+        prepend_text: cp ndb.QP ./SAVE/. \n cp ndb.QP ./aiida.out/.
         resources:
           num_cores_per_mpiproc: 1
           num_machines: 1

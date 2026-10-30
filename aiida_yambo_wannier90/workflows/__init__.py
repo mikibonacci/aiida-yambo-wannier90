@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """Base class for Yambo+Wannier90 workflow."""
-from email.charset import QP
+import copy
 import pathlib
 import typing as ty
 
@@ -26,7 +26,6 @@ from aiida_wannier90_workflows.common.types import (
 from aiida_wannier90_workflows.utils.kpoints import (
     get_explicit_kpoints,
     get_mesh_from_kpoints,
-    get_path_from_kpoints
 )
 from aiida_wannier90_workflows.utils.workflows.builder.setter import set_kpoints
 from aiida_wannier90_workflows.workflows import (
@@ -36,10 +35,10 @@ from aiida_wannier90_workflows.workflows import (
 )
 
 from aiida_yambo.workflows.yamboconvergence import YamboConvergence
-from aiida_yambo.workflows.yamborestart import YamboRestart
 from aiida_yambo.workflows.yambowf import YamboWorkflow
 from aiida_yambo.workflows.ypprestart import YppRestart
 
+from aiida_yambo_wannier90.calculations.functions.kpath import kpoint_path_dict
 from aiida_yambo_wannier90.calculations.functions.kmesh import (
     find_commensurate_meshes,
     get_output_explicit_kpoints,
@@ -53,7 +52,9 @@ from aiida_yambo_wannier90.utils.workflows import (
     get_yambo_nscf,
 )
 
-__all__ = ["validate_inputs", "YamboWannier90WorkChain"]
+from .validation import KPATH_INPUTS, validate_inputs, validate_kpath_inputs  # noqa: F401  # pylint: disable=unused-import
+
+__all__ = ["validate_inputs", "validate_kpath_inputs", "YamboWannier90WorkChain"]
 
 
 # pylint: disable=too-many-lines
@@ -61,69 +62,12 @@ __all__ = ["validate_inputs", "YamboWannier90WorkChain"]
 # TODO remove this todo disable
 
 
-def validate_inputs(  # pylint: disable=inconsistent-return-statements,too-many-return-statements,too-many-branches,too-many-locals
-    inputs: dict, ctx=None  # pylint: disable=unused-argument
-) -> ty.Union[None, str]:
-    """Validate the inputs of the entire input namespace."""
-
-    # Must run steps sequentially
-    order = ["yambo", "yambo_qp", "ypp", "wannier90", "gw2wannier90", "wannier90_qp"]
-    non_empty = [_ in inputs for _ in order]
-    first_input = non_empty.index(True)
-    if not all(non_empty[first_input:]):
-        first_no_input = first_input + non_empty[first_input:].index(False)
-        return (
-            f"WorkChain must be run in order, `{order[first_input]}` is provided "
-            f"but `{order[first_no_input]}` is empty."
-        )
-
-    # Check inputs if previous steps are skipped
-    should_run_yambo = "yambo" in inputs
-    should_run_yambo_commensurate = "GW_mesh" in inputs
-    should_run_wannier90 = "wannier90" in inputs
-    should_run_yambo_qp = "yambo_qp" in inputs
-    should_run_ypp = "ypp" in inputs
-    should_run_gw2wannier90 = "gw2wannier90" in inputs
-    should_run_wannier90_qp = "wannier90_qp" in inputs
-
-    if should_run_yambo_qp:
-        yambo_qp_inputs = inputs["yambo_qp"]
-
-        if not should_run_yambo:
-            if "parent_folder" not in yambo_qp_inputs and not should_run_yambo_commensurate:
-                return "`yambo_qp.parent_folder` is empty."
-
-    if should_run_ypp:
-        ypp_inputs = inputs["ypp"]
-
-        if not should_run_yambo_qp:
-            if "QP_DB" not in ypp_inputs["ypp"]:
-                return "`ypp.ypp.QP_DB` is empty."
-            if "parent_folder" not in ypp_inputs:
-                return "`ypp.parent_folder` is empty."
-
-        # I need `wannier90` input to run a w90 postproc before `ypp`,
-        # or if there is `nnkp`, I skip the postproc.
-        if not should_run_wannier90:
-            if "nnkp_file" not in ypp_inputs["ypp"]:
-                return "`ypp.ypp.nnkp_file` is empty."
-
-    if should_run_gw2wannier90:
-        gw2wannier90_inputs = inputs["gw2wannier90"]
-        if not should_run_wannier90:
-            for tag in ["nnkp", "parent_folder"]:
-                if tag not in gw2wannier90_inputs:
-                    return f"`gw2wannier90.{tag}` is empty."
-
-        if not should_run_ypp:
-            if "unsorted_eig" not in gw2wannier90_inputs:
-                return "`gw2wannier90.unsorted_eig` is empty."
-
-    if should_run_wannier90_qp:
-        wannier90_qp_inputs = inputs["wannier90_qp"]
-        if not should_run_gw2wannier90:
-            if "remote_input_folder" not in wannier90_qp_inputs["wannier90"]:
-                return "`wannier90_qp.wannier90.remote_input_folder` is empty."
+def _copy_namespaces(inputs: dict) -> dict:
+    """Copy a nested dictionary of inputs: the dictionaries are new, the (AiiDA) values are the same objects."""
+    return {
+        key: _copy_namespaces(value) if isinstance(value, dict) else value
+        for key, value in inputs.items()
+    }
 
 
 class YamboWannier90WorkChain(
@@ -154,13 +98,23 @@ class YamboWannier90WorkChain(
             ),
         )
         spec.input(
+            "kpoint_path",
+            valid_type=orm.KpointsData,
+            required=False,
+            help=(
+                "High-symmetry points of the band path, with `labels`: wannier90 interpolates the bands along the "
+                "segments between consecutive labelled points. Specify only one of `kpoint_path`, `bands_kpoints` "
+                "and `bands_kpoints_distance`; with none of them the workchain runs seekpath."
+            ),
+        )
+        spec.input(
             "bands_kpoints",
             valid_type=orm.KpointsData,
             required=False,
             help=(
-                "Explicit kpoints to use for the band structure. (specify also the labels) "
-                "If not specified, the workchain will run seekpath to generate "
-                "a primitive cell and a bands_kpoints. Specify either this or `bands_kpoints_distance`."
+                "Explicit list of k-points (with `labels`) where the bands are computed, exactly these points "
+                "(for example to compare point by point with the Quantum ESPRESSO bands). "
+                "Specify only one of `kpoint_path`, `bands_kpoints` and `bands_kpoints_distance`."
             ),
         )
         spec.input(
@@ -168,8 +122,10 @@ class YamboWannier90WorkChain(
             valid_type=orm.Float,
             serializer=orm.to_aiida_type,
             required=False,
-            help="Minimum kpoints distance for seekpath to generate a list of kpoints along the path. "
-            "Specify either this or `bands_kpoints`.",
+            help=(
+                "Minimum kpoints distance for seekpath to generate the path (in the primitive cell). "
+                "Specify only one of `kpoint_path`, `bands_kpoints` and `bands_kpoints_distance`."
+            ),
         )
         spec.input(
             "kpoints_force_gw",
@@ -209,7 +165,7 @@ class YamboWannier90WorkChain(
             ),
             namespace_options={
                 "help": (
-                    "Inputs for the `YamboConvergence` for yambo QP calculation. "
+                    "Inputs for the `YamboWorkflow` of the yambo QP calculation (`scf`, `nscf`, `qp`, `QP_subsets_dict`...). "
                     "If not provided, it will be generated based on the previous converged inputs."
                 ),
                 "required": False,
@@ -227,16 +183,6 @@ class YamboWannier90WorkChain(
             },
         )
 
-        spec.expose_inputs(
-            YppRestart,
-            namespace="ypp_QP",
-            exclude=("clean_workdir",),
-            namespace_options={
-                "help": "Inputs for the `YppRestart` calculation, to be used for merging QP dbs. ",
-                "required": False,
-                "populate_defaults": False,
-            },
-        )
         spec.expose_inputs(
             Wannier90OptimizeWorkChain,
             namespace="wannier90",
@@ -368,10 +314,6 @@ class YamboWannier90WorkChain(
                 cls.run_yambo_qp,
                 cls.inspect_yambo_qp,
             ),
-            # if_(cls.should_run_ypp_qp)(
-            #    cls.run_ypp_qp,
-            #    cls.inspect_ypp_qp,
-            # ),
             if_(cls.should_run_wannier90_pp)(
                 cls.run_wannier90_pp,
                 cls.inspect_wannier90_pp,
@@ -448,16 +390,16 @@ class YamboWannier90WorkChain(
     def get_protocol_filepath(cls) -> pathlib.Path:
         """Return the ``pathlib.Path`` to the ``.yaml`` file that defines the protocols."""
         # pylint: disable=import-outside-toplevel
-        from importlib_resources import files
+        from importlib.resources import files
 
         from . import protocols
 
         return files(protocols) / "yambo_wannier90.yaml"
 
     @classmethod
-    def get_builder_from_protocol(  # pylint: disable=too-many-statements,too-many-locals
+    def get_builder_from_protocol(  # pylint: disable=too-many-statements,too-many-locals,too-many-arguments
         cls,
-        codes: ty.Dict[str, ty.Union[orm.Code, str, int]],
+        codes: ty.Mapping[str, ty.Union[orm.Code, str, int]],
         structure: orm.StructureData,
         *,
         protocol: str = None,
@@ -465,26 +407,33 @@ class YamboWannier90WorkChain(
         pseudo_family: str = "PseudoDojo/0.4/PBE/SR/standard/upf",
         exclude_semicore: bool = False,
         electronic_type=ElectronicType.METAL,
+        spin_type=SpinType.NONE,
         wannier_projection_type: WannierProjectionType = WannierProjectionType.ATOMIC_PROJECTORS_QE,
+        disentanglement_type: WannierDisentanglementType = None,
+        frozen_type: WannierFrozenType = None,
         NLCC: bool = True,
         RIM_v: bool = True,
         RIM_W: bool = False,
     ) -> ProcessBuilder:
         """Return a builder prepopulated with inputs selected according to the chosen protocol.
 
-        :param codes: [description]
-        :type codes: typing.Dict[str, typing.Union[aiida.orm.Code, str, int]]
-        :param bxsf: [description]
-        :type bxsf: aiida.orm.RemoteData
-        :param protocol: [description], defaults to None
-        :type protocol: str, optional
-        :param overrides: [description], defaults to None
-        :type overrides: dict, optional
-        :return: [description]
-        :rtype: aiida.engine.ProcessBuilder
+        :param codes: the codes, by label, pk or node: ``pw``, ``pw2wannier90``, ``wannier90``, ``yambo``, ``p2y``, ``ypp``,
+            ``gw2wannier90`` and, for the projectors of Quantum ESPRESSO, ``projwfc``. The dictionary is not modified.
+        :param structure: the structure.
+        :param protocol: ``fast``, ``moderate`` (default) or ``precise``: it is used for the yambo convergence and the
+            QP calculation and for the wannier90 workflows.
+        :param overrides: nested dictionary, one key for each stage: ``yambo`` (the ``YamboConvergence``: e.g.
+            ``{"ywfl": {"qp": {...}}}``), ``yambo_qp``, ``ypp``, ``wannier90`` (the ``Wannier90OptimizeWorkChain``) and
+            ``wannier90_qp``, and the keys of this workchain. The values are merged in the inputs of the stage.
+        :param wannier_projection_type, disentanglement_type, frozen_type: how the Wannier functions are built; the
+            last two are guessed from the first one if not given. They are used by both wannier90 runs.
+        :return: a builder; see :mod:`aiida_yambo_wannier90.utils.setters` to change it, and ``print_summary``.
         """
         # pylint: disable=import-outside-toplevel,protected-access
-        # from aiida_quantumespresso.workflows.protocols.utils import recursive_merge
+        from aiida_quantumespresso.workflows.protocols.utils import recursive_merge
+        from aiida_wannier90_workflows.utils.workflows.builder.projections import (
+            guess_wannier_projection_types,
+        )
         from aiida_wannier90_workflows.utils.workflows.builder.submit import (
             recursive_merge_builder,
         )
@@ -498,33 +447,50 @@ class YamboWannier90WorkChain(
             "ypp",
             "gw2wannier90",
         ]
-        if not all(_ in codes for _ in required_codes):
-            raise ValueError(f"`codes` must contain {required_codes}")
-
-        for key, code in codes.items():
-            if not isinstance(code, orm.Code):
-                codes[key] = orm.load_code(code)
+        missing = [name for name in required_codes if name not in codes]
+        if missing:
+            raise ValueError(f"`codes` must contain {required_codes}, missing {missing}")
+        # not the caller's dictionary
+        codes = {
+            key: code if isinstance(code, orm.Code) else orm.load_code(code)
+            for key, code in codes.items()
+        }
 
         type_check(structure, orm.StructureData)
 
+        protocol = protocol or cls.get_default_protocol()
+        overrides = copy.deepcopy(overrides) if overrides else {}
+        stage_overrides = {
+            stage: overrides.pop(stage, {})
+            for stage in ("yambo", "yambo_qp", "ypp", "wannier90", "wannier90_qp")
+        }
         inputs = cls.get_protocol_inputs(protocol, overrides)
-
         inputs["structure"] = structure
 
+        # The types of Wannier functions, the same for the two wannier90 runs
+        _, disentanglement_type, frozen_type = guess_wannier_projection_types(
+            electronic_type, wannier_projection_type, disentanglement_type, frozen_type
+        )
+
         # Prepare yambo
-        yambo_overrides = {
-            "ywfl": {
-                "scf": {"pseudo_family": pseudo_family},
-                "nscf": {"pseudo_family": pseudo_family},
+        yambo_overrides = recursive_merge(
+            {
+                "ywfl": {
+                    "scf": {"pseudo_family": pseudo_family},
+                    "nscf": {"pseudo_family": pseudo_family},
+                },
             },
-        }
+            stage_overrides["yambo"],
+        )
         yambo_builder = YamboConvergence.get_builder_from_protocol(
             pw_code=codes["pw"],
             preprocessing_code=codes["p2y"],
             code=codes["yambo"],
-            protocol="moderate",
+            protocol=protocol,
+            protocol_qe=protocol,
             structure=structure,
             electronic_type=electronic_type,
+            spin_type=spin_type,
             overrides=yambo_overrides,
             NLCC=NLCC,
             RIM_v=RIM_v,
@@ -536,16 +502,14 @@ class YamboWannier90WorkChain(
         inputs["yambo"].pop("clean_workdir", None)
 
         # Prepare wannier
-        # projection_type = WannierProjectionType.ATOMIC_PROJECTORS_QE
-        # disentanglement_type = WannierDisentanglementType.SMV
-        # frozen_type = WannierFrozenType.FIXED_PLUS_PROJECTABILITY
-        # Auto guess from projection_type
-        disentanglement_type = None
-        frozen_type = None
         wannier_builder = Wannier90OptimizeWorkChain.get_builder_from_protocol(
             codes,
             structure,
+            protocol=protocol,
+            overrides=stage_overrides["wannier90"] or None,
             pseudo_family=pseudo_family,
+            electronic_type=electronic_type,
+            spin_type=spin_type,
             exclude_semicore=exclude_semicore,
             projection_type=wannier_projection_type,
             disentanglement_type=disentanglement_type,
@@ -557,18 +521,9 @@ class YamboWannier90WorkChain(
         inputs["wannier90"].pop("structure", None)
         inputs["wannier90"].pop("clean_workdir", None)
 
-        # TODO Prepare yambo_qp
-        # yambo_qp_builder = YamboRestart.get_builder_from_protocol(
-        #     pw_code=codes["pw"],
-        #     preprocessing_code=codes["p2y"],
-        #     code=codes["yambo"],
-        #     protocol="moderate",
-        #     NLCC=NLCC,
-        #     RIM_v=RIM_v,
-        #     RIM_W=RIM_W,
-        # )
-        # inputs["yambo_qp"] = yambo_qp_builder._inputs(prune=True)
-        inputs["yambo_qp"] = inputs["yambo"]["ywfl"]
+        # The yambo QP calculation: a YamboWorkflow, as the one of the convergence (a copy of the namespaces; the nodes
+        # are shared). The QP to compute are chosen at runtime (see `QP_subsets_dict` and `set_qp_subsets`).
+        inputs["yambo_qp"] = _copy_namespaces(inputs["yambo"]["ywfl"])
         inputs["yambo_qp"].pop("clean_workdir", None)
 
         # Ypp; without a parent_folder for now. We should set it during the input preparation
@@ -576,44 +531,35 @@ class YamboWannier90WorkChain(
             code=codes["ypp"],
             protocol="Wannier",
         )
-        # ypp_builder.ypp.QP_calculations = List(
-        #    list=[1948, 1980, 2006, 2064, 2151, 2176, 2215, 2253]
-        # )
-        # ypp_builder.QP_DB = load_node(2329)
         inputs["ypp"] = ypp_builder._inputs(prune=True)
         inputs["ypp"].pop("clean_workdir", None)
-
-        # ypp_QP
-        ypp_builder = YppRestart.get_builder_from_protocol(
-            code=codes["ypp"],
-            protocol="merge_QP",
-        )
-
-        inputs["ypp_QP"] = ypp_builder._inputs(prune=True)
-        inputs["ypp_QP"].pop(
-            "clean_workdir", None
-        )  # but actually I want to clean the wdir
 
         # Prepare gw2wannier90
         inputs["gw2wannier90"] = {
             "code": codes["gw2wannier90"],
         }
 
-        # Prepare wannier90_qp
+        # Prepare wannier90_qp: the same Wannier functions as the first run, then the settings which depend on the
+        # first run are copied (`sync_wannier90_qp`)
+        qp_overrides = recursive_merge(
+            {"meta_parameters": {"exclude_semicore": exclude_semicore}},
+            stage_overrides["wannier90_qp"],
+        )
         wannier90_qp_builder = Wannier90BaseWorkChain.get_builder_from_protocol(
             code=codes["wannier90"],
             structure=structure,
+            protocol=protocol,
+            overrides=qp_overrides,
             pseudo_family=pseudo_family,
-            overrides={
-                "meta_parameters": {
-                    "exclude_semicore": exclude_semicore,
-                }
-            },
             electronic_type=electronic_type,
+            spin_type=spin_type,
+            projection_type=wannier_projection_type,
+            disentanglement_type=disentanglement_type,
+            frozen_type=frozen_type,
         )
         params = wannier90_qp_builder.wannier90.parameters.get_dict()
         params["bands_plot"] = True
-        wannier90_qp_builder.wannier90.parameters = orm.Dict(dict=params)
+        wannier90_qp_builder.wannier90.parameters = orm.Dict(params)
         inputs["wannier90_qp"] = wannier90_qp_builder._inputs(prune=True)
         inputs["wannier90_qp"]["wannier90"].pop("structure", None)
         inputs["wannier90_qp"].pop("clean_workdir", None)
@@ -621,13 +567,36 @@ class YamboWannier90WorkChain(
         builder = cls.get_builder()
         builder = recursive_merge_builder(builder, inputs)
 
+        # the overrides of the stages which have no builder of their own
+        user = {
+            stage: stage_overrides[stage] for stage in ("yambo_qp", "ypp") if stage_overrides[stage]
+        }
+        if user:
+            builder = recursive_merge_builder(builder, user)
+
+        from aiida_yambo_wannier90.utils.setters import sync_wannier90_qp
+
+        sync_wannier90_qp(builder)
         return builder
 
     def setup(self) -> None:  # pylint: disable=inconsistent-return-statements
         """Initialize context variables."""
 
         self.ctx.current_structure = self.inputs.structure
-    
+
+        # The band path, as the steps need it. `current_kpoint_path` is the `Dict` of wannier90 (`path` and
+        # `point_coords`), `current_kpoint_list` the labelled `KpointsData` of the high-symmetry points (for the
+        # `Wannier90OptimizeWorkChain`), `current_bands_kpoints` an explicit list of points; seekpath fills the first two.
+        self.ctx.current_kpoint_path = None
+        self.ctx.current_kpoint_list = None
+        self.ctx.current_bands_kpoints = None
+        if "kpoint_path" in self.inputs:
+            self.ctx.current_kpoint_list = self.inputs.kpoint_path
+            self.ctx.current_kpoint_path = kpoint_path_dict(
+                self.inputs.kpoint_path, metadata={"call_link_label": "kpoint_path_dict"}
+            )
+        elif "bands_kpoints" in self.inputs:
+            self.ctx.current_bands_kpoints = self.inputs.bands_kpoints
 
         # Converged mesh from YamboConvergence
         self.ctx.kpoints_gw_conv = None
@@ -674,14 +643,8 @@ class YamboWannier90WorkChain(
         self.ctx.kpoints_w90 = self.ctx.kpoints_w90_input
 
     def should_run_seekpath(self):
-        """Run seekpath if the `inputs.bands_kpoints` is not provided."""
-        if "bands_kpoints" in self.inputs:
-            self.ctx.current_kpoint_path = get_path_from_kpoints(
-                self.inputs["bands_kpoints"]
-            )
-            return False
-        else:
-            return True
+        """Run seekpath if neither `kpoint_path` nor `bands_kpoints` are provided."""
+        return "kpoint_path" not in self.inputs and "bands_kpoints" not in self.inputs
 
     def run_seekpath(self):
         """Run the structure through SeeKpath to get the primitive and normalized structure."""
@@ -697,14 +660,13 @@ class YamboWannier90WorkChain(
 
         self.ctx.current_structure = result["primitive_structure"]
         
-        self.ctx.current_explicit_kpoints = result["explicit_kpoints"]
-        
+        self.ctx.current_kpoint_list = result["explicit_kpoints"]
+
         # Add `kpoint_path` for Wannier bands
-        self.ctx.current_kpoint_path = get_path_from_kpoints(
-                result["explicit_kpoints"]
+        self.ctx.current_kpoint_path = kpoint_path_dict(
+            result["explicit_kpoints"], metadata={"call_link_label": "kpoint_path_dict"}
         )
-        
-        
+
         structure_formula = self.inputs.structure.get_formula()
         primitive_structure_formula = result["primitive_structure"].get_formula()
         self.report(
@@ -829,14 +791,14 @@ class YamboWannier90WorkChain(
         # Get and reuse the converged input from YamboWorkflow
         # pylint: disable=protected-access
         inputs = AttributeDict(self.exposed_inputs(YamboWorkflow, namespace="yambo_qp"))
-        if "QP_subset_dict" in inputs:
-            del inputs.QP_subset_dict
+        if "QP_subsets_dict" in inputs:
+            del inputs.QP_subsets_dict
         inputs.scf.pw.structure = self.ctx.current_structure
         inputs.nscf.pw.structure = self.ctx.current_structure
 
         if self.should_run_yambo_convergence():
             converged_wkchain = get_yambo_converged_workchain(self.ctx.wkchain_yambo_conv)
-            inputs.yres.yambo.parameters = converged_wkchain.inputs._construct_attribute_dict(True)
+            inputs.qp.yambo.parameters = converged_wkchain.inputs.qp.yambo.parameters
 
         # Use commensurate mesh
         inputs.nscf.kpoints = self.ctx.kpoints_gw
@@ -895,7 +857,7 @@ class YamboWannier90WorkChain(
         # pylint: disable=too-many-locals
         # Get the converged input from YamboWorkflow
         inputs = AttributeDict(self.exposed_inputs(YamboWorkflow, namespace="yambo_qp"))
-        yambo_params = inputs.yres.yambo.parameters.get_dict()
+        yambo_params = inputs.qp.yambo.parameters.get_dict()
 
         # Prepare QPkrange
         if self.should_run_wannier90():
@@ -912,13 +874,13 @@ class YamboWannier90WorkChain(
 
         if self.should_run_yambo_commensurate():
             parent_wkchain = self.ctx.wkchain_yambo_commensurate
-            yambo_params = parent_wkchain.inputs.yres.yambo.parameters.get_dict()
+            yambo_params = parent_wkchain.inputs.qp.yambo.parameters.get_dict()
         else:
             if self.should_run_yambo_convergence():
                 parent_wkchain = get_yambo_converged_workchain(
                     self.ctx.wkchain_yambo_conv
                 )
-                yambo_params = parent_wkchain.inputs.yres.yambo.parameters.get_dict()
+                yambo_params = parent_wkchain.inputs.qp.yambo.parameters.get_dict()
             else:
                 # Assume the inputs.parent_folder is generated inside a YamboWorkflow
                 parent_folder = inputs.parent_folder
@@ -947,35 +909,29 @@ class YamboWannier90WorkChain(
         )
         qpkrange = qpkrange.get_list()
 
-        # Set QPkrange in GW parameters
-        # yambo_params["variables"]["QPkrange"] = [qpkrange, ""]
-
-        # To be set from input
-        if not hasattr(inputs, "QP_subset_dict"):
-            inputs.QP_subset_dict = orm.Dict(
-                dict={
-                    "qp_per_subset": 50,
-                    "parallel_runs": 4,
-                    "explicit": qpkrange,
-                }
-            )
-        else:
-            QP_subset_dict = inputs.QP_subset_dict.get_dict()
-            QP_subset_dict["explicit"] = qpkrange
-            inputs.QP_subset_dict = orm.Dict(dict=QP_subset_dict)
-
+        # The QPs to compute are the ones of the coarse Wannier90 mesh (`explicit`); the other keys of `QP_subsets_dict`
+        # (`qp_per_subset`, `parallel_runs`, `parallelism`, `resources`...) are the user ones, with these defaults.
+        # Any other source of QP given by the user is replaced.
+        QP_subsets_dict = (
+            inputs.QP_subsets_dict.get_dict()
+            if "QP_subsets_dict" in inputs
+            else {"qp_per_subset": 50, "parallel_runs": 4}
+        )
+        for source in ("boundaries", "range_QP"):
+            QP_subsets_dict.pop(source, None)
+        QP_subsets_dict["explicit"] = qpkrange
+        inputs.QP_subsets_dict = orm.Dict(QP_subsets_dict)
         inputs.scf.pw.structure = self.ctx.current_structure
         inputs.nscf.pw.structure = self.ctx.current_structure
 
-        inputs.yres.yambo.parameters = orm.Dict(dict=yambo_params)
+        inputs.qp.yambo.parameters = orm.Dict(yambo_params)
 
         inputs.parent_folder = parent_wkchain.outputs.remote_folder
 
         # Use converged output folder
-        settings: dict = inputs.yres.yambo.settings.get_dict()
-        # TODO is this correct?
+        settings: dict = inputs.qp.yambo.settings.get_dict() if "settings" in inputs.qp.yambo else {}
         settings.update({"INITIALISE": False, "COPY_SAVE": True, "COPY_DBS": True})
-        inputs.yres.yambo.settings = orm.Dict(dict=settings)
+        inputs.qp.yambo.settings = orm.Dict(settings)
 
         return inputs
 
@@ -1002,56 +958,6 @@ class YamboWannier90WorkChain(
             )
             return self.exit_codes.ERROR_SUB_PROCESS_FAILED_YAMBO_QP
 
-    def should_run_ypp_qp(self) -> bool:
-        """Whether to run ypp_QP."""
-
-        if "ypp_QP" in self.inputs:
-            if "parent_folder" in self.inputs.ypp_QP:
-                self.ctx.wkchain_yambo_qp = (
-                    self.inputs.ypp_QP.outputs.remote_folder.creator.caller.caller
-                )
-            QP_list = (
-                self.ctx.wkchain_yambo_qp.outputs.splitted_QP_calculations.get_list()
-            )
-            if len(QP_list) > 1:
-                return True
-
-        return False
-
-    def prepare_ypp_inputs_qp(self) -> AttributeDict:
-        """Prepare inputs for ypp."""
-        inputs = AttributeDict(self.exposed_inputs(YppRestart, namespace="ypp_QP"))
-
-        inputs.ypp.QP_calculations = (
-            self.ctx.wkchain_yambo_qp.outputs.splitted_QP_calculations
-        )
-        inputs.parent_folder = self.ctx.wkchain_yambo_qp.called[0].inputs.parent_folder
-
-        return inputs
-
-    def run_ypp_qp(self) -> ty.Dict:
-        """Run the ``YppRestart``."""
-        inputs = self.prepare_ypp_inputs_qp()
-
-        inputs.metadata.call_link_label = "ypp_QP"
-        inputs = prepare_process_inputs(YppRestart, inputs)
-        running = self.submit(YppRestart, **inputs)
-        self.report(f"launching {running.process_label}<{running.pk}>")
-
-        return ToContext(wkchain_ypp_QP=running)
-
-    def inspect_ypp_qp(  # pylint: disable=inconsistent-return-statements
-        self,
-    ) -> ty.Union[None, ExitCode]:
-        """Verify that the ``YppRestart`` successfully finished."""
-        wkchain = self.ctx.wkchain_ypp_QP
-
-        if not wkchain.is_finished_ok:
-            self.report(
-                f"{wkchain.process_label} failed with exit status {wkchain.exit_status}"
-            )
-            return self.exit_codes.ERROR_SUB_PROCESS_FAILED_YPP
-
     def should_run_wannier90_pp(self) -> bool:
         """Whether to run wannier."""
         if self.should_run_ypp() and "nnkp_file" not in self.inputs.ypp.ypp:
@@ -1071,7 +977,8 @@ class YamboWannier90WorkChain(
         params["bands_plot"] = False
         inputs.wannier90.parameters = orm.Dict(params)
         
-        if self.ctx.current_kpoint_path:
+        # no bands are computed in the postprocessing, but the path is kept in the inputs
+        if self.ctx.current_kpoint_path is not None:
             inputs.wannier90.kpoint_path = self.ctx.current_kpoint_path
 
         # Use commensurate kmesh
@@ -1127,19 +1034,13 @@ class YamboWannier90WorkChain(
         """Prepare inputs for ypp."""
         inputs = AttributeDict(self.exposed_inputs(YppRestart, namespace="ypp"))
 
-        # if self.should_run_ypp_qp():
-        #    ypp_wkchain = self.ctx.wkchain_ypp_QP
-        #    # Working if merge is not needed
-        #    inputs.ypp.QP_DB = ypp_wkchain.outputs.QP_DB
-        #    inputs.parent_folder = ypp_wkchain.outputs.remote_folder
-
         if self.should_run_yambo_qp():
             yambo_wkchain = self.ctx.wkchain_yambo_qp
-            # Working if merge is not needed
+            # `merged_QP` if the QP splitter ran, else the `QP_db` of the single GW calculation
             if "merged_QP" in yambo_wkchain.outputs:
                 inputs.ypp.QP_DB = yambo_wkchain.outputs.merged_QP
             else:
-                inputs.ypp.QP_DB = yambo_wkchain.outputs.QP_DB
+                inputs.ypp.QP_DB = yambo_wkchain.outputs.QP_db
             inputs.parent_folder = self.ctx.wkchain_yambo_qp.outputs.remote_folder.creator.outputs.remote_folder
 
         if self.should_run_wannier90_pp():
@@ -1177,6 +1078,19 @@ class YamboWannier90WorkChain(
 
         return False
 
+    def _set_bands_kpoints(self, inputs: AttributeDict, optimize: bool = True) -> None:
+        """Set the band path on the inputs of a wannier90 step: the explicit list of points or the high-symmetry path.
+
+        The `Wannier90OptimizeWorkChain` (`optimize=True`) takes the path as a labelled `KpointsData` (`kpoint_path`),
+        the `Wannier90BaseWorkChain` as the `Dict` of wannier90; both take an explicit list as `bands_kpoints`.
+        """
+        if self.ctx.current_bands_kpoints is not None:
+            inputs.bands_kpoints = self.ctx.current_bands_kpoints
+        elif optimize:
+            inputs.kpoint_path = self.ctx.current_kpoint_list
+        else:
+            inputs.kpoint_path = self.ctx.current_kpoint_path
+
     def prepare_wannier90_inputs(self) -> AttributeDict:
         """Prepare inputs for wannier90."""
         inputs = AttributeDict(
@@ -1184,10 +1098,7 @@ class YamboWannier90WorkChain(
         )
 
         inputs.structure = self.ctx.current_structure
-        if "bands_kpoints" in self.inputs:
-            inputs.kpoint_path = self.inputs["bands_kpoints"]
-        elif self.ctx.current_kpoint_path:
-            inputs.kpoint_path = self.ctx.current_explicit_kpoints
+        self._set_bands_kpoints(inputs)
 
         # Use commensurate kmesh
         if self.ctx.kpoints_w90_input != self.ctx.kpoints_w90:
@@ -1273,10 +1184,11 @@ class YamboWannier90WorkChain(
         )
 
         inputs.wannier90.structure = self.ctx.current_structure
-        if self.ctx.current_kpoint_path:
-            inputs.wannier90.kpoint_path = self.ctx.current_kpoint_path
+        self._set_bands_kpoints(inputs.wannier90, optimize=False)
 
-        if self.ctx.kpoints_w90_input != self.ctx.kpoints_w90:
+        # The mesh of the first wannier90 run (which can have been made commensurate with the GW one): the
+        # QP run must use the same, since it reads its matrices. Without the first run, the user's one.
+        if self.ctx.kpoints_w90 is not None:
             set_kpoints(
                 inputs, self.ctx.kpoints_w90, process_class=Wannier90BaseWorkChain
             )
@@ -1340,68 +1252,19 @@ class YamboWannier90WorkChain(
     def results(self) -> None:
         """Attach the relevant output nodes."""
 
-        if "wkchain_yambo_conv" in self.ctx:
-            self.out_many(
-                self.exposed_outputs(
-                    self.ctx.wkchain_yambo_conv,
-                    YamboConvergence,
-                    namespace="yambo",
-                )
-            )
-
-        if "wkchain_yambo_commensurate" in self.ctx:
-            self.out_many(
-                self.exposed_outputs(
-                    self.ctx.wkchain_yambo_commensurate,
-                    YamboWorkflow,
-                    namespace="yambo_commensurate",
-                )
-            )
-
-        if "wkchain_yambo_qp" in self.ctx:
-            self.out_many(
-                self.exposed_outputs(
-                    self.ctx.wkchain_yambo_qp,
-                    YamboRestart,
-                    namespace="yambo_qp",
-                )
-            )
-
-        if "wkchain_wannier90_pp" in self.ctx:
-            self.out_many(
-                self.exposed_outputs(
-                    self.ctx.wkchain_wannier90_pp,
-                    Wannier90BaseWorkChain,
-                    namespace="wannier90_pp",
-                )
-            )
-
-        if "wkchain_ypp" in self.ctx:
-            self.out_many(
-                self.exposed_outputs(
-                    self.ctx.wkchain_ypp,
-                    YppRestart,
-                    namespace="ypp",
-                )
-            )
-
-        if "wkchain_wannier90" in self.ctx:
-            self.out_many(
-                self.exposed_outputs(
-                    self.ctx.wkchain_wannier90,
-                    Wannier90OptimizeWorkChain,
-                    namespace="wannier90",
-                )
-            )
-
-        if "calc_gw2wannier90" in self.ctx:
-            self.out_many(
-                self.exposed_outputs(
-                    self.ctx.calc_gw2wannier90,
-                    Gw2wannier90Calculation,
-                    namespace="gw2wannier90",
-                )
-            )
+        # the context entry of each stage, its class and the namespace of its outputs
+        stages = (
+            ("wkchain_yambo_conv", YamboConvergence, "yambo"),
+            ("wkchain_yambo_commensurate", YamboWorkflow, "yambo_commensurate"),
+            ("wkchain_yambo_qp", YamboWorkflow, "yambo_qp"),
+            ("wkchain_wannier90_pp", Wannier90BaseWorkChain, "wannier90_pp"),
+            ("wkchain_ypp", YppRestart, "ypp"),
+            ("wkchain_wannier90", Wannier90OptimizeWorkChain, "wannier90"),
+            ("calc_gw2wannier90", Gw2wannier90Calculation, "gw2wannier90"),
+        )
+        for name, process_class, namespace in stages:
+            if name in self.ctx:
+                self.out_many(self.exposed_outputs(self.ctx[name], process_class, namespace=namespace))
 
         self.out_many(
             self.exposed_outputs(

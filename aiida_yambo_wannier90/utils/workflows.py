@@ -10,6 +10,14 @@ from aiida_yambo.workflows.yamboconvergence import YamboConvergence
 from aiida_yambo.workflows.yambowf import YamboWorkflow
 
 
+def _column(story, name):
+    """The values of a column of the story, which is a dictionary of columns or a list of rows."""
+    if isinstance(story, dict):
+        column = story[name]
+        return list(column.values()) if isinstance(column, dict) else list(column)
+    return [row[name] for row in story]
+
+
 def get_yambo_converged_workchain(workchain: YamboConvergence) -> YamboWorkflow:
     """Find converged ``YamboWorkflow`` from ``YamboConvergence``.
 
@@ -21,20 +29,22 @@ def get_yambo_converged_workchain(workchain: YamboConvergence) -> YamboWorkflow:
     if workchain.process_class != YamboConvergence:
         raise ValueError(f"input workchain {workchain} is not a `YamboConvergence`")
 
-    yambo_history = workchain.outputs.history.get_dict()
-    # e.g.
-    #  'useful': {'0': False, '1': False, '2': False, '3': False, '4': True,
-    #             '5': False, '6': False, '7': False, '8': False, '9': False}
+    # `convergence_summary['uuid']` is the last converged calculation; if it is not there (the convergence of
+    # the last parameter group did not finish), the last row of `collection['story']` flagged as converged.
+    summary = workchain.outputs.convergence_summary.get_dict()
+    uuid = summary.get("uuid")
+    if uuid is None:
+        story = workchain.outputs.collection.get_dict()["story"]
+        converged = [
+            (i, uid)
+            for i, (uid, flag) in enumerate(zip(_column(story, "uuid"), _column(story, "converged")))
+            if flag
+        ]
+        if not converged:
+            raise ValueError(f"No converged `YamboWorkflow` in {workchain}")
+        uuid = converged[-1][1]
 
-    converged_idx = [k for k, v in yambo_history["useful"].items() if v]
-
-    if len(converged_idx) < 1:
-        raise ValueError(f"No converged `YamboWorkflow` in {workchain}")
-
-    converged_idx = converged_idx[0]
-
-    # The YamboWorkflow
-    converged_wkchain = orm.load_node(yambo_history["uuid"][converged_idx])
+    converged_wkchain = orm.load_node(uuid)
 
     return converged_wkchain
 

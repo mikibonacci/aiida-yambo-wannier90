@@ -9,7 +9,7 @@ from aiida.engine.processes import ProcessBuilder, ProcessBuilderNamespace
 
 from aiida_quantumespresso.workflows.pw.base import PwBaseWorkChain
 
-from aiida_wannier90_workflows.workflows.bands import Wannier90BandsWorkChain
+from aiida_wannier90_workflows.workflows.optimize import Wannier90OptimizeWorkChain
 from aiida_wannier90_workflows.workflows.base.wannier90 import Wannier90BaseWorkChain
 
 from aiida_yambo_wannier90.workflows import YamboWannier90WorkChain
@@ -37,39 +37,26 @@ def set_parallelization(  # pylint: disable=too-many-locals,too-many-statements
         set_para(builder, parallelization, process_class)
         return
 
-    if "yambo" in builder:
-        if "scf" in builder["yambo"]["ywfl"]:
-            set_parallelization(
-                builder["yambo"]["ywfl"]["scf"],
-                parallelization=parallelization,
-                process_class=PwBaseWorkChain,
-            )
-        if "nscf" in builder["yambo"]["ywfl"]:
-            set_parallelization(
-                builder["yambo"]["ywfl"]["nscf"],
-                parallelization=parallelization,
-                process_class=PwBaseWorkChain,
-            )
-
+    # the DFT steps of the GW calculations: `yambo` (convergence, namespace `ywfl`) and `yambo_qp` (a `YamboWorkflow`)
+    gw_namespaces = []
+    if "yambo" in builder and "ywfl" in builder["yambo"]:
+        gw_namespaces.append(builder["yambo"]["ywfl"])
     if "yambo_qp" in builder:
-        if "scf" in builder["yambo"]["ywfl"]:
-            set_parallelization(
-                builder["yambo_qp"]["scf"],
-                parallelization=parallelization,
-                process_class=PwBaseWorkChain,
-            )
-        if "nscf" in builder["yambo"]["ywfl"]:
-            set_parallelization(
-                builder["yambo_qp"]["nscf"],
-                parallelization=parallelization,
-                process_class=PwBaseWorkChain,
-            )
+        gw_namespaces.append(builder["yambo_qp"])
+    for namespace in gw_namespaces:
+        for step in ("scf", "nscf"):
+            if step in namespace:
+                set_parallelization(
+                    namespace[step],
+                    parallelization=parallelization,
+                    process_class=PwBaseWorkChain,
+                )
 
     if "wannier90" in builder:
         set_parallelization(
             builder["wannier90"],
             parallelization=parallelization,
-            process_class=Wannier90BandsWorkChain,
+            process_class=Wannier90OptimizeWorkChain,
         )
 
     if "wannier90_qp" in builder:
